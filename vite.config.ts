@@ -1,8 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// GitHub Pages serves from https://<user>.github.io/<repo>/
-// Set VITE_BASE_PATH=/YourRepoName/ when building for Pages (done in CI).
+// Local dev uses /. GitHub Actions build uses ./ for relative asset paths in docs/.
 const base = process.env.VITE_BASE_PATH ?? '/'
 
 export default defineConfig({

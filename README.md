@@ -49,14 +49,11 @@ After 4 seconds the page will show setup instructions if the app fails to start.
 
 Live site: **https://naikynook.github.io/Pavilion_Configurator/**
 
-### One-time setup (required)
+The deploy workflow builds the app into `docs/` on every push to `main`. The root URL auto-redirects to `/docs/` on GitHub Pages.
 
-1. Push to `main` — the workflow builds the app and commits it to the **`docs/`** folder
-2. Open **[Settings → Pages](https://github.com/naikynook/Pavilion_Configurator/settings/pages)**
-3. Set **Branch** to `main` and **Folder** to **`/docs`**
-4. Click **Save**, wait 1–2 minutes, hard-refresh the site
+After pushing, wait for the **Actions** workflow to finish, then hard-refresh (`Ctrl+Shift+R`).
 
-> **Important:** Folder must be `/docs`, not `/ (root)`. The workflow skips re-runs when only `docs/` changes, so it won't loop.
+Optional: In **Settings → Pages**, you can set Branch `main` / Folder `/docs` so the root URL serves the built app directly (no redirect needed).
 
 ## Build
 

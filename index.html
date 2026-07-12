@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pavilion Configurator</title>
+    <script>
+      // GitHub Pages serves source from repo root — redirect to the built app in /docs/
+      (function () {
+        if (!location.hostname.endsWith('github.io')) return
+        if (location.pathname.includes('/docs')) return
+        var segments = location.pathname.split('/').filter(Boolean)
+        if (!segments.length) return
+        location.replace('/' + segments[0] + '/docs/')
+      })()
+    </script>
     <style>
       html, body, #root { margin: 0; height: 100%; }
       .boot-loading {
