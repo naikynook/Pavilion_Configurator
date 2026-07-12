@@ -47,29 +47,69 @@
     </div>
 
     <script>
-      function showBootError(message) {
+      function isGitHubPages() {
+        return location.hostname.endsWith('github.io')
+      }
+
+      function showBootError(message, tips) {
         var root = document.getElementById('root')
         if (!root || !root.querySelector('.boot-loading')) return
+
+        var tipsHtml = tips.map(function (tip) {
+          return '<li>' + tip + '</li>'
+        }).join('')
+
         root.innerHTML =
           '<div class="boot-error">' +
           '<h1>App did not start</h1>' +
           '<p>' + message + '</p>' +
-          '<ol>' +
-          '<li>Double-click <code>start.bat</code> in the project folder</li>' +
-          '<li>Or run <code>npm install</code> then <code>npm run dev</code></li>' +
-          '<li>Open <code>http://localhost:5173</code> (not the HTML file directly)</li>' +
-          '</ol>' +
-          '<p>Do not use Live Server or open <code>index.html</code> directly.</p>' +
+          '<ol>' + tipsHtml + '</ol>' +
           '</div>'
       }
 
       window.addEventListener('error', function (event) {
-        showBootError(event.message || 'A script failed to load.')
+        if (isGitHubPages()) {
+          showBootError(
+            'The production build failed to load.',
+            [
+              'Check GitHub Actions for a failed deploy workflow',
+              'In repo Settings → Pages, set Source to <code>GitHub Actions</code>',
+              'Push to <code>main</code> to trigger a new deploy',
+            ],
+          )
+        } else {
+          showBootError(
+            event.message || 'A script failed to load.',
+            [
+              'Double-click <code>start.bat</code> in the project folder',
+              'Or run <code>npm install</code> then <code>npm run dev</code>',
+              'Open <code>http://localhost:5173</code> (not the HTML file directly)',
+            ],
+          )
+        }
       })
 
       setTimeout(function () {
-        if (document.querySelector('.boot-loading')) {
-          showBootError('The dev server is not running or this page was opened incorrectly.')
+        if (!document.querySelector('.boot-loading')) return
+
+        if (isGitHubPages()) {
+          showBootError(
+            'This site needs a built deploy — raw source files cannot run on GitHub Pages.',
+            [
+              'Go to repo Settings → Pages → Build and deployment → Source: <code>GitHub Actions</code>',
+              'Push this repo to <code>main</code> (the deploy workflow will run automatically)',
+              'After the workflow succeeds, refresh this page',
+            ],
+          )
+        } else {
+          showBootError(
+            'The dev server is not running or this page was opened incorrectly.',
+            [
+              'Double-click <code>start.bat</code> in the project folder',
+              'Or run <code>npm install</code> then <code>npm run dev</code>',
+              'Open <code>http://localhost:5173</code> (not the HTML file directly)',
+            ],
+          )
         }
       }, 4000)
     </script>

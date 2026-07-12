@@ -45,6 +45,27 @@ After 4 seconds the page will show setup instructions if the app fails to start.
 **Node not found**
 - Install Node.js from https://nodejs.org/, restart your terminal, then run `start.bat` again.
 
+## GitHub Pages deployment
+
+GitHub Pages only serves **built** static files — it cannot run `npm run dev` or compile TypeScript. A deploy workflow is included.
+
+### One-time setup
+
+1. Push this repo to GitHub
+2. Go to **Settings → Pages**
+3. Under **Build and deployment**, set **Source** to **GitHub Actions**
+4. Push to `main` (or run the "Deploy to GitHub Pages" workflow manually)
+
+After the workflow succeeds, your site will be live at:
+
+`https://<your-username>.github.io/<repo-name>/`
+
+### How it works
+
+- `.github/workflows/deploy.yml` runs `npm run build` on every push to `main`
+- The built `dist/` folder is deployed to GitHub Pages
+- `VITE_BASE_PATH` is set automatically to match your repo name
+
 ## Build
 
 ```bash
