@@ -5,6 +5,10 @@ import { canPlacePrimitive, gridToWorldPosition, useDesignStore } from '../store
 
 type StoreState = ReturnType<typeof useDesignStore.getState>
 
+// Keep grid below y=0 so the bounding box bottom edge doesn't z-fight with it.
+const GRID_Y_OFFSET = -0.02
+const BOUNDING_FLOOR_Y = 0.02
+
 interface ViewportApi {
   sync: (state: StoreState) => void
   resize: () => void
@@ -12,19 +16,20 @@ interface ViewportApi {
 }
 
 function createBoxEdgeGeometry(width: number, depth: number, height: number) {
+  const y = BOUNDING_FLOOR_Y
   const segments: [number, number, number][] = [
-    [0, 0, 0], [width, 0, 0],
-    [width, 0, 0], [width, 0, depth],
-    [width, 0, depth], [0, 0, depth],
-    [0, 0, depth], [0, 0, 0],
+    [0, y, 0], [width, y, 0],
+    [width, y, 0], [width, y, depth],
+    [width, y, depth], [0, y, depth],
+    [0, y, depth], [0, y, 0],
     [0, height, 0], [width, height, 0],
     [width, height, 0], [width, height, depth],
     [width, height, depth], [0, height, depth],
     [0, height, depth], [0, height, 0],
-    [0, 0, 0], [0, height, 0],
-    [width, 0, 0], [width, height, 0],
-    [width, 0, depth], [width, height, depth],
-    [0, 0, depth], [0, height, depth],
+    [0, y, 0], [0, height, 0],
+    [width, y, 0], [width, height, 0],
+    [width, y, depth], [width, height, depth],
+    [0, y, depth], [0, height, depth],
   ]
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute(
@@ -69,20 +74,21 @@ export function createViewport(container: HTMLElement): ViewportApi {
 
   const gridGroup = new THREE.Group()
   let gridHelper = new THREE.GridHelper(20, 20, 0xd2d2d7, 0xe8e8ed)
+  gridHelper.position.y = GRID_Y_OFFSET
   gridGroup.add(gridHelper)
   scene.add(gridGroup)
 
   const boundingGroup = new THREE.Group()
   const boundingLines = new THREE.LineSegments(
     createBoxEdgeGeometry(10, 10, 6),
-    new THREE.LineBasicMaterial({ color: 0x0071e3 }),
+    new THREE.LineBasicMaterial({ color: 0x0071e3, depthTest: true }),
   )
   const boundingFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(10, 10),
     new THREE.MeshBasicMaterial({ color: 0x0071e3, transparent: true, opacity: 0.04 }),
   )
   boundingFloor.rotation.x = -Math.PI / 2
-  boundingFloor.position.set(5, 0.001, 5)
+  boundingFloor.position.set(5, BOUNDING_FLOOR_Y, 5)
   boundingGroup.add(boundingLines, boundingFloor)
   scene.add(boundingGroup)
 
@@ -121,7 +127,7 @@ export function createViewport(container: HTMLElement): ViewportApi {
     boundingLines.geometry = createBoxEdgeGeometry(box.width, box.depth, box.height)
     boundingFloor.geometry.dispose()
     boundingFloor.geometry = new THREE.PlaneGeometry(box.width, box.depth)
-    boundingFloor.position.set(box.width / 2, 0.001, box.depth / 2)
+    boundingFloor.position.set(box.width / 2, BOUNDING_FLOOR_Y, box.depth / 2)
 
     const gridSize = Math.max(box.width, box.depth) + 4
     gridGroup.remove(gridHelper)
@@ -131,7 +137,7 @@ export function createViewport(container: HTMLElement): ViewportApi {
       : [gridHelper.material]
     gridMaterials.forEach((material) => material.dispose())
     gridHelper = new THREE.GridHelper(gridSize, gridSize, 0xd2d2d7, 0xe8e8ed)
-    gridHelper.position.set(box.width / 2, 0, box.depth / 2)
+    gridHelper.position.set(box.width / 2, GRID_Y_OFFSET, box.depth / 2)
     gridGroup.add(gridHelper)
 
     updateCamera(box)
