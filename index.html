@@ -51,6 +51,10 @@
         return location.hostname.endsWith('github.io')
       }
 
+      function isServingSourceFiles() {
+        return !!document.querySelector('script[src="/src/main.tsx"]')
+      }
+
       function showBootError(message, tips) {
         var root = document.getElementById('root')
         if (!root || !root.querySelector('.boot-loading')) return
@@ -67,13 +71,25 @@
           '</div>'
       }
 
+      if (isGitHubPages() && isServingSourceFiles()) {
+        showBootError(
+          'GitHub Pages is serving raw source files from the <code>main</code> branch instead of the built site.',
+          [
+            'Go to repo <strong>Settings → Pages</strong>',
+            'Under <strong>Build and deployment → Branch</strong>, select <code>gh-pages</code> and <code>/ (root)</code>',
+            'Save, wait 1–2 minutes, then refresh this page',
+            'If <code>gh-pages</code> is missing, push to <code>main</code> to run the deploy workflow first',
+          ],
+        )
+      }
+
       window.addEventListener('error', function (event) {
         if (isGitHubPages()) {
           showBootError(
             'The production build failed to load.',
             [
-              'Check GitHub Actions for a failed deploy workflow',
-              'In repo Settings → Pages, set Source to <code>GitHub Actions</code>',
+              'Check <strong>Actions</strong> tab for a failed deploy workflow',
+              'In <strong>Settings → Pages</strong>, set Branch to <code>gh-pages</code> / <code>(root)</code>',
               'Push to <code>main</code> to trigger a new deploy',
             ],
           )
@@ -91,14 +107,15 @@
 
       setTimeout(function () {
         if (!document.querySelector('.boot-loading')) return
+        if (isGitHubPages() && isServingSourceFiles()) return
 
         if (isGitHubPages()) {
           showBootError(
-            'This site needs a built deploy — raw source files cannot run on GitHub Pages.',
+            'The built site did not load in time.',
             [
-              'Go to repo Settings → Pages → Build and deployment → Source: <code>GitHub Actions</code>',
-              'Push this repo to <code>main</code> (the deploy workflow will run automatically)',
-              'After the workflow succeeds, refresh this page',
+              'In <strong>Settings → Pages</strong>, set Branch to <code>gh-pages</code> / <code>(root)</code>',
+              'Open the <strong>Actions</strong> tab and confirm the deploy workflow succeeded',
+              'Wait a minute after changing Pages settings, then hard-refresh',
             ],
           )
         } else {

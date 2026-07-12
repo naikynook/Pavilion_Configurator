@@ -47,24 +47,26 @@ After 4 seconds the page will show setup instructions if the app fails to start.
 
 ## GitHub Pages deployment
 
-GitHub Pages only serves **built** static files — it cannot run `npm run dev` or compile TypeScript. A deploy workflow is included.
+Your live site: **https://naikynook.github.io/Pavilion_Configurator/**
 
-### One-time setup
+GitHub Pages cannot run TypeScript or `npm run dev`. The deploy workflow builds the app and publishes it to the **`gh-pages`** branch.
 
-1. Push this repo to GitHub
-2. Go to **Settings → Pages**
-3. Under **Build and deployment**, set **Source** to **GitHub Actions**
-4. Push to `main` (or run the "Deploy to GitHub Pages" workflow manually)
+### One-time setup (required)
 
-After the workflow succeeds, your site will be live at:
+1. Push this repo to GitHub (the deploy workflow runs on push to `main`)
+2. Open **Settings → Pages** in your repo
+3. Under **Build and deployment → Branch**, change:
+   - **From:** `main` / `(root)` ← this serves raw source and breaks the app
+   - **To:** `gh-pages` / `(root)` ← this serves the built site
+4. Click **Save**
+5. Wait 1–2 minutes, then refresh your site
 
-`https://<your-username>.github.io/<repo-name>/`
+If you don't see a `gh-pages` branch yet, push these latest changes to `main` first and wait for the [Actions workflow](https://github.com/naikynook/Pavilion_Configurator/actions) to finish.
 
 ### How it works
 
-- `.github/workflows/deploy.yml` runs `npm run build` on every push to `main`
-- The built `dist/` folder is deployed to GitHub Pages
-- `VITE_BASE_PATH` is set automatically to match your repo name
+- `.github/workflows/deploy.yml` runs `npm run build` and pushes `dist/` to the `gh-pages` branch
+- GitHub Pages must be set to serve from **`gh-pages`**, not `main`
 
 ## Build
 
