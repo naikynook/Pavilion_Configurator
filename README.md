@@ -2,30 +2,48 @@
 
 A modular pavilion configurator for DIYers with a 3D design canvas, toolbox, and live materials panel.
 
-## Getting started
+## Quick start (Windows)
 
-**Important:** You must use the Vite dev server. Do **not** open `index.html` directly in the browser or use Live Server — that will show a blank white page.
+**Double-click `start.bat`** in the project folder.
 
-Requires [Node.js](https://nodejs.org/) (v18 or later).
+It will install dependencies (first run only) and open `http://localhost:5173`.
+
+## Manual start
+
+Requires [Node.js](https://nodejs.org/) (v18+).
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open the URL printed in the terminal (usually `http://localhost:5173`).
+Open **http://localhost:5173** in your browser.
 
-If you see a blank screen, reinstall dependencies:
+## Important — avoid a blank / loading screen
 
-```powershell
-Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
-npm install
-npm run dev
-```
+| Do this | Don't do this |
+|---------|----------------|
+| Run `start.bat` or `npm run dev` | Open `index.html` directly |
+| Visit `http://localhost:5173` | Use VS Code Live Server |
+| Wait for terminal to show the local URL | Double-click `index.html` in Explorer |
 
-Then hard-refresh (`Ctrl+Shift+R`). Open DevTools → Console (`F12`) for any errors.
+If you only see "Loading Pavilion Configurator…" forever, you are not using the Vite dev server.
 
-Open the URL shown in the terminal (usually `http://localhost:5173`).
+After 4 seconds the page will show setup instructions if the app fails to start.
+
+## Troubleshooting
+
+**Stuck on loading**
+1. Close the browser tab
+2. Double-click `start.bat`
+3. Wait for `npm install` to finish (first time only)
+4. Browser should open to `http://localhost:5173`
+
+**npm install fails**
+- The project is in OneDrive, which can lock files. Try copying it to `C:\Projects\Pavilion_Configurator` and run `start.bat` there.
+
+**Node not found**
+- Install Node.js from https://nodejs.org/, restart your terminal, then run `start.bat` again.
 
 ## Build
 
@@ -36,31 +54,23 @@ npm run preview
 
 ## Features
 
-- **3D canvas** — Orbit, pan, and zoom with React Three Fiber
-- **Bounding box** — Adjustable width, depth, and height to define the build site
-- **Grid placement** — Snap primitives to a 1-unit grid inside the bounding box
-- **Primitives** — Post, beam, panel, and block modules (placeholder boxes for now)
-- **Materials panel** — Live bill of materials based on placed primitives
-- **Minimal UI** — Apple-inspired design per `STYLE.md`
-
-## Project docs
-
-- [`PROJECT_DESCRIPTION.md`](./PROJECT_DESCRIPTION.md) — Product overview and architecture
-- [`STYLE.md`](./STYLE.md) — Design system and visual guidelines
+- **3D canvas** — Orbit, pan, and zoom
+- **Bounding box** — Adjustable site dimensions
+- **Grid placement** — Snap box primitives to a 1-unit grid
+- **Materials panel** — Live bill of materials
 
 ## Controls
 
 | Action | Input |
 |--------|-------|
-| Orbit camera | Left-drag on canvas |
-| Pan camera | Right-drag on canvas |
+| Orbit camera | Left-drag |
+| Pan camera | Right-drag |
 | Zoom | Scroll wheel |
 | Place primitive | Select from toolbox, click grid |
-| Select primitive | Select tool, click object |
-| Delete selected | Delete or Backspace key |
+| Delete selected | Delete or Backspace |
 
 ## Tech stack
 
 - React + TypeScript + Vite
-- Three.js (vanilla WebGL viewport)
-- Zustand (state management)
+- Three.js
+- Zustand

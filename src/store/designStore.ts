@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useMemo } from 'react'
 import type {
   BoundingBox,
   MaterialSummary,
@@ -128,7 +129,15 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       selectedPrimitiveId: null,
     }),
 
-  setHoverGrid: (grid, valid) => set({ hoverGrid: grid, placementValid: valid }),
+  setHoverGrid: (grid, valid) =>
+    set((state) => {
+      const sameGrid =
+        state.hoverGrid?.x === grid?.x && state.hoverGrid?.z === grid?.z
+      if (sameGrid && state.placementValid === valid) {
+        return state
+      }
+      return { hoverGrid: grid, placementValid: valid }
+    }),
 
   selectPrimitive: (id) =>
     set({
@@ -171,7 +180,8 @@ export const useDesignStore = create<DesignState>((set, get) => ({
 }))
 
 export function useMaterialSummary() {
-  return useDesignStore((state) => buildMaterialSummary(state.primitives))
+  const primitives = useDesignStore((state) => state.primitives)
+  return useMemo(() => buildMaterialSummary(primitives), [primitives])
 }
 
 export function gridToWorldPosition(
