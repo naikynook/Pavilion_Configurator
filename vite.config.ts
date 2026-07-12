@@ -10,4 +10,14 @@ export default defineConfig({
   optimizeDeps: {
     include: ['three', 'zustand', 'react', 'react-dom'],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // GitHub Pages/Jekyll ignores files starting with "_" — use hash-only names.
+        entryFileNames: 'assets/entry-[hash].js',
+        chunkFileNames: 'assets/chunk-[hash].js',
+        assetFileNames: 'assets/asset-[hash][extname]',
+      },
+    },
+  },
 })
