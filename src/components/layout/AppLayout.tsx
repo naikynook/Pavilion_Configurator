@@ -1,8 +1,12 @@
-import { useEffect } from 'react'
-import { Scene3D } from '../canvas/Scene3D'
+import { lazy, Suspense, useEffect } from 'react'
 import { LeftSidebar } from '../sidebar/LeftSidebar'
 import { RightSidebar } from '../sidebar/RightSidebar'
 import { useDesignStore } from '../../store/designStore'
+import { ErrorBoundary } from '../ui/ErrorBoundary'
+
+const Viewport3DPanel = lazy(() =>
+  import('../canvas/Viewport3D').then((module) => ({ default: module.Viewport3DPanel })),
+)
 
 export function AppLayout() {
   const removeSelected = useDesignStore((s) => s.removeSelected)
@@ -23,7 +27,11 @@ export function AppLayout() {
     <div className="app-layout">
       <LeftSidebar />
       <main className="app-main">
-        <Scene3D />
+        <ErrorBoundary>
+          <Suspense fallback={<div className="canvas-loading">Loading 3D view…</div>}>
+            <Viewport3DPanel />
+          </Suspense>
+        </ErrorBoundary>
       </main>
       <RightSidebar />
     </div>

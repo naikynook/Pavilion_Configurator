@@ -4,6 +4,8 @@ A modular pavilion configurator for DIYers with a 3D design canvas, toolbox, and
 
 ## Getting started
 
+**Important:** You must use the Vite dev server. Do **not** open `index.html` directly in the browser or use Live Server — that will show a blank white page.
+
 Requires [Node.js](https://nodejs.org/) (v18 or later).
 
 ```bash
@@ -11,15 +13,17 @@ npm install
 npm run dev
 ```
 
-If you see a blank white screen, clear dependencies and reinstall:
+Open the URL printed in the terminal (usually `http://localhost:5173`).
 
-```bash
-rm -rf node_modules package-lock.json
+If you see a blank screen, reinstall dependencies:
+
+```powershell
+Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
 npm install
 npm run dev
 ```
 
-Then hard-refresh the browser (`Ctrl+Shift+R`). If something is still wrong, open DevTools → Console — errors will also appear on-screen via the error boundary.
+Then hard-refresh (`Ctrl+Shift+R`). Open DevTools → Console (`F12`) for any errors.
 
 Open the URL shown in the terminal (usually `http://localhost:5173`).
 
@@ -58,5 +62,5 @@ npm run preview
 ## Tech stack
 
 - React + TypeScript + Vite
-- React Three Fiber + drei
+- Three.js (vanilla WebGL viewport)
 - Zustand (state management)
