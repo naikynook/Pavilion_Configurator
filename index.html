@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pavilion Configurator</title>
+    <style>
+      html, body, #root { margin: 0; height: 100%; }
+      .boot-loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #6e6e73;
+        background: #f5f5f7;
+      }
+      .boot-error {
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-width: 560px;
+        margin: 0 auto;
+        padding: 32px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        color: #1d1d1f;
+        background: #f5f5f7;
+        min-height: 100%;
+        justify-content: center;
+      }
+      .boot-error h1 { margin: 0; font-size: 22px; }
+      .boot-error p { margin: 0; color: #6e6e73; line-height: 1.5; }
+      .boot-error code {
+        background: #e8e8ed;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+      .boot-error ol { margin: 0; padding-left: 20px; color: #6e6e73; }
+      .boot-error li { margin-bottom: 8px; }
+    </style>
+    <script type="module" crossorigin src="/Pavilion_Configurator/assets/entry-CEPuv43M.js"></script>
+    <link rel="stylesheet" crossorigin href="/Pavilion_Configurator/assets/asset-BFORQoKV.css">
+  </head>
+  <body>
+    <div id="root">
+      <div class="boot-loading">Loading Pavilion Configurator…</div>
+    </div>
+
+    <script>
+      function isGitHubPages() {
+        return location.hostname.endsWith('github.io')
+      }
+
+      function isServingSourceFiles() {
+        return !!document.querySelector('script[src="/src/main.tsx"]')
+      }
+
+      function showBootError(message, tips) {
+        var root = document.getElementById('root')
+        if (!root || !root.querySelector('.boot-loading')) return
+
+        var tipsHtml = tips.map(function (tip) {
+          return '<li>' + tip + '</li>'
+        }).join('')
+
+        root.innerHTML =
+          '<div class="boot-error">' +
+          '<h1>App did not start</h1>' +
+          '<p>' + message + '</p>' +
+          '<ol>' + tipsHtml + '</ol>' +
+          '</div>'
+      }
+
+      if (isGitHubPages() && isServingSourceFiles()) {
+        showBootError(
+          'GitHub Pages is serving raw source files. Change the Pages folder to <code>/docs</code>.',
+          [
+            'Go to <strong>Settings → Pages</strong>',
+            'Set Branch to <code>main</code> and Folder to <code>/docs</code> (not <code>/ (root)</code>)',
+            'Click Save, wait 1–2 minutes, then hard-refresh',
+            'Push to <code>main</code> if the <code>docs/</code> folder does not exist yet',
+          ],
+        )
+      }
+
+      window.addEventListener('error', function (event) {
+        if (isGitHubPages()) {
+          showBootError(
+            'The production build failed to load.',
+            [
+              'Check <strong>Actions</strong> tab for a failed deploy workflow',
+              'In <strong>Settings → Pages</strong>, set Branch to <code>main</code> and Folder to <code>/docs</code>',
+              'Push to <code>main</code> to trigger a new deploy',
+            ],
+          )
+        } else {
+          showBootError(
+            event.message || 'A script failed to load.',
+            [
+              'Double-click <code>start.bat</code> in the project folder',
+              'Or run <code>npm install</code> then <code>npm run dev</code>',
+              'Open <code>http://localhost:5173</code> (not the HTML file directly)',
+            ],
+          )
+        }
+      })
+
+      setTimeout(function () {
+        if (!document.querySelector('.boot-loading')) return
+        if (isGitHubPages() && isServingSourceFiles()) return
+
+        if (isGitHubPages()) {
+          showBootError(
+            'The built site did not load in time.',
+            [
+              'In <strong>Settings → Pages</strong>, set Branch to <code>main</code> and Folder to <code>/docs</code>',
+              'Open the <strong>Actions</strong> tab and confirm the deploy workflow succeeded',
+              'Wait a minute after changing Pages settings, then hard-refresh',
+            ],
+          )
+        } else {
+          showBootError(
+            'The dev server is not running or this page was opened incorrectly.',
+            [
+              'Double-click <code>start.bat</code> in the project folder',
+              'Or run <code>npm install</code> then <code>npm run dev</code>',
+              'Open <code>http://localhost:5173</code> (not the HTML file directly)',
+            ],
+          )
+        }
+      }, 4000)
+    </script>
+
+  </body>
+</html>
