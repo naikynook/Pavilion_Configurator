@@ -51,21 +51,12 @@ Live site: **https://naikynook.github.io/Pavilion_Configurator/**
 
 ### One-time setup (required)
 
-1. Push to `main` — the deploy workflow builds the app and puts it in the **`docs/`** folder
+1. Push to `main` — the workflow builds the app and commits it to the **`docs/`** folder
 2. Open **[Settings → Pages](https://github.com/naikynook/Pavilion_Configurator/settings/pages)**
-3. Set **Branch** to `main` and **Folder** to **`/docs`** (not `/ (root)`)
+3. Set **Branch** to `main` and **Folder** to **`/docs`**
 4. Click **Save**, wait 1–2 minutes, hard-refresh the site
 
-```
-Branch:  main
-Folder:  /docs     ← must be /docs, NOT / (root)
-```
-
-**Why `/docs`?** The project source lives at the repo root. The built website is in `docs/`. Serving `/ (root)` shows raw source files and causes the endless loading screen.
-
-### After each push to main
-
-The workflow rebuilds and updates `docs/` automatically. No manual steps needed.
+> **Important:** Folder must be `/docs`, not `/ (root)`. The workflow skips re-runs when only `docs/` changes, so it won't loop.
 
 ## Build
 

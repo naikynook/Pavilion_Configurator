@@ -3,6 +3,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
@@ -29,11 +31,13 @@ jobs:
         env:
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
 
-      - name: Deploy built site to docs/ folder
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
-          publish_branch: main
-          destination_dir: docs
-          keep_files: true
+      - name: Publish built site to docs/
+        run: |
+          rm -rf docs
+          cp -r dist docs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f docs
+          git diff --staged --quiet && echo "No changes to deploy" && exit 0
+          git commit -m "chore: deploy site to docs"
+          git push
