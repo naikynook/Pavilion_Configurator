@@ -49,11 +49,26 @@ After 4 seconds the page will show setup instructions if the app fails to start.
 
 Live site: **https://naikynook.github.io/Pavilion_Configurator/**
 
-The deploy workflow builds the app into `docs/` on every push to `main`. The root URL auto-redirects to `/docs/` on GitHub Pages.
+The deploy workflow builds the app and publishes it to the **`gh-pages` branch only**. It does **not** commit back to `main`, so you can push without pulling first.
 
-After pushing, wait for the **Actions** workflow to finish, then hard-refresh (`Ctrl+Shift+R`).
+### One-time Pages setting
 
-Optional: In **Settings → Pages**, you can set Branch `main` / Folder `/docs` so the root URL serves the built app directly (no redirect needed).
+In **[Settings → Pages](https://github.com/naikynook/Pavilion_Configurator/settings/pages)**:
+
+- **Branch:** `gh-pages`
+- **Folder:** `/ (root)`
+
+After pushing source changes, wait for the Actions workflow to finish, then hard-refresh the site.
+
+### Git workflow
+
+```bash
+git add .
+git commit -m "your message"
+git push origin main
+```
+
+No need to pull before every push unless you edited the repo on GitHub directly.
 
 ## Build
 

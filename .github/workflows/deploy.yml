@@ -3,12 +3,14 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main, master]
-    paths-ignore:
-      - 'docs/**'
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
 
 jobs:
   build-and-deploy:
@@ -29,16 +31,12 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_BASE_PATH: ./
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
 
-      - name: Publish built site to docs/
-        run: |
-          rm -rf docs
-          cp -r dist docs
-          touch .nojekyll
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f docs .nojekyll
-          git diff --staged --quiet && echo "No changes to deploy" && exit 0
-          git commit -m "chore: deploy site to docs"
-          git push
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          publish_branch: gh-pages
+          force_orphan: true
