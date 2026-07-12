@@ -49,18 +49,19 @@ After 4 seconds the page will show setup instructions if the app fails to start.
 
 Live site: **https://naikynook.github.io/Pavilion_Configurator/**
 
-The deploy workflow builds the app and publishes it to the **`gh-pages` branch only**. It does **not** commit back to `main`, so you can push without pulling first.
+Deploy uses **GitHub Actions only** — it never commits back to `main`, so you should not need to pull before every push.
 
 ### One-time Pages setting
 
 In **[Settings → Pages](https://github.com/naikynook/Pavilion_Configurator/settings/pages)**:
 
-- **Branch:** `gh-pages`
-- **Folder:** `/ (root)`
+- **Source:** GitHub Actions (not "Deploy from a branch")
 
-After pushing source changes, wait for the Actions workflow to finish, then hard-refresh the site.
+### Git workflow (avoid merge commits)
 
-### Git workflow
+In **GitHub Desktop**: **File → Options → Git** → enable **"Rebase current branch after pull"**.
+
+Then your normal flow is just:
 
 ```bash
 git add .
@@ -68,7 +69,7 @@ git commit -m "your message"
 git push origin main
 ```
 
-No need to pull before every push unless you edited the repo on GitHub directly.
+Only pull if you intentionally changed something on github.com. Use rebase, not merge, to avoid extra "Merge branch 'main'" commits and duplicate workflow runs.
 
 ## Build
 
