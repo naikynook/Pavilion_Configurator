@@ -24,7 +24,7 @@ export function PlacementPreview({ typeId, gridX, gridZ, valid }: PlacementPrevi
     <mesh position={[pos.x, pos.y, pos.z]}>
       <boxGeometry args={[w, h, d]} />
       <meshStandardMaterial color={color} transparent opacity={0.35} />
-      <Edges color={color} lineWidth={1.5} threshold={15} />
+      <Edges color={color} threshold={15} />
     </mesh>
   )
 }

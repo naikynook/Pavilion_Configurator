@@ -51,7 +51,6 @@ export function PlacedPrimitiveMesh({
       />
       <Edges
         color={selected ? '#0071E3' : '#8B7355'}
-        lineWidth={selected ? 2 : 1}
         threshold={15}
       />
     </mesh>

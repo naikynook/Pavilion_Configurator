@@ -11,6 +11,16 @@ npm install
 npm run dev
 ```
 
+If you see a blank white screen, clear dependencies and reinstall:
+
+```bash
+rm -rf node_modules package-lock.json
+npm install
+npm run dev
+```
+
+Then hard-refresh the browser (`Ctrl+Shift+R`). If something is still wrong, open DevTools → Console — errors will also appear on-screen via the error boundary.
+
 Open the URL shown in the terminal (usually `http://localhost:5173`).
 
 ## Build
