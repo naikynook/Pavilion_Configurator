@@ -73,12 +73,12 @@
 
       if (isGitHubPages() && isServingSourceFiles()) {
         showBootError(
-          'GitHub Pages is serving raw source files from the <code>main</code> branch instead of the built site.',
+          'GitHub Pages is serving raw source files. Change the Pages folder to <code>/docs</code>.',
           [
-            'Go to repo <strong>Settings → Pages</strong>',
-            'Under <strong>Build and deployment → Branch</strong>, select <code>gh-pages</code> and <code>/ (root)</code>',
-            'Save, wait 1–2 minutes, then refresh this page',
-            'If <code>gh-pages</code> is missing, push to <code>main</code> to run the deploy workflow first',
+            'Go to <strong>Settings → Pages</strong>',
+            'Set Branch to <code>main</code> and Folder to <code>/docs</code> (not <code>/ (root)</code>)',
+            'Click Save, wait 1–2 minutes, then hard-refresh',
+            'Push to <code>main</code> if the <code>docs/</code> folder does not exist yet',
           ],
         )
       }
@@ -89,7 +89,7 @@
             'The production build failed to load.',
             [
               'Check <strong>Actions</strong> tab for a failed deploy workflow',
-              'In <strong>Settings → Pages</strong>, set Branch to <code>gh-pages</code> / <code>(root)</code>',
+              'In <strong>Settings → Pages</strong>, set Branch to <code>main</code> and Folder to <code>/docs</code>',
               'Push to <code>main</code> to trigger a new deploy',
             ],
           )
@@ -113,7 +113,7 @@
           showBootError(
             'The built site did not load in time.',
             [
-              'In <strong>Settings → Pages</strong>, set Branch to <code>gh-pages</code> / <code>(root)</code>',
+              'In <strong>Settings → Pages</strong>, set Branch to <code>main</code> and Folder to <code>/docs</code>',
               'Open the <strong>Actions</strong> tab and confirm the deploy workflow succeeded',
               'Wait a minute after changing Pages settings, then hard-refresh',
             ],

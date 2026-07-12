@@ -47,26 +47,25 @@ After 4 seconds the page will show setup instructions if the app fails to start.
 
 ## GitHub Pages deployment
 
-Your live site: **https://naikynook.github.io/Pavilion_Configurator/**
-
-GitHub Pages cannot run TypeScript or `npm run dev`. The deploy workflow builds the app and publishes it to the **`gh-pages`** branch.
+Live site: **https://naikynook.github.io/Pavilion_Configurator/**
 
 ### One-time setup (required)
 
-1. Push this repo to GitHub (the deploy workflow runs on push to `main`)
-2. Open **Settings → Pages** in your repo
-3. Under **Build and deployment → Branch**, change:
-   - **From:** `main` / `(root)` ← this serves raw source and breaks the app
-   - **To:** `gh-pages` / `(root)` ← this serves the built site
-4. Click **Save**
-5. Wait 1–2 minutes, then refresh your site
+1. Push to `main` — the deploy workflow builds the app and puts it in the **`docs/`** folder
+2. Open **[Settings → Pages](https://github.com/naikynook/Pavilion_Configurator/settings/pages)**
+3. Set **Branch** to `main` and **Folder** to **`/docs`** (not `/ (root)`)
+4. Click **Save**, wait 1–2 minutes, hard-refresh the site
 
-If you don't see a `gh-pages` branch yet, push these latest changes to `main` first and wait for the [Actions workflow](https://github.com/naikynook/Pavilion_Configurator/actions) to finish.
+```
+Branch:  main
+Folder:  /docs     ← must be /docs, NOT / (root)
+```
 
-### How it works
+**Why `/docs`?** The project source lives at the repo root. The built website is in `docs/`. Serving `/ (root)` shows raw source files and causes the endless loading screen.
 
-- `.github/workflows/deploy.yml` runs `npm run build` and pushes `dist/` to the `gh-pages` branch
-- GitHub Pages must be set to serve from **`gh-pages`**, not `main`
+### After each push to main
+
+The workflow rebuilds and updates `docs/` automatically. No manual steps needed.
 
 ## Build
 
