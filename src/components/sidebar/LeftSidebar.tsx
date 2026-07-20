@@ -100,7 +100,10 @@ export function LeftSidebar() {
 
       <section className="sidebar__section">
         <h2 className="sidebar__section-title">Primitives</h2>
-        <p className="sidebar__hint">Select a primitive, then click the grid to place it.</p>
+        <p className="sidebar__hint">
+          Select a primitive, then click the grid to place it. Four 4×4 modules in a square
+          auto-connect into an 8×8.
+        </p>
         <div className="tool-list">
           {PRIMITIVE_DEFINITIONS.map((def) => (
             <ToolItem

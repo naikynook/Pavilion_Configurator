@@ -12,6 +12,7 @@ import {
   getPrimitiveDefinition,
   PRIMITIVE_DEFINITIONS,
 } from '../constants/primitives'
+import { mergeFourSquares } from '../logic/moduleMerge'
 
 interface DesignState {
   boundingBox: BoundingBox
@@ -102,7 +103,7 @@ function buildMaterialSummary(primitives: PlacedPrimitive[]): MaterialSummary[] 
 }
 
 export const useDesignStore = create<DesignState>((set, get) => ({
-  boundingBox: { width: 10, depth: 10, height: 6 },
+  boundingBox: { width: 10, depth: 10, height: 10 },
   primitives: [],
   activeTool: 'select',
   activePrimitiveType: null,
@@ -164,7 +165,8 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       size: def.size,
     }
 
-    set({ primitives: [...primitives, primitive] })
+    const next = mergeFourSquares([...primitives, primitive])
+    set({ primitives: next, selectedPrimitiveId: null })
   },
 
   removeSelected: () => {

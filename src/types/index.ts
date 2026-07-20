@@ -1,14 +1,17 @@
 export type ToolMode = 'select' | 'place'
 
-export type PrimitiveTypeId = 'post' | 'beam' | 'panel' | 'block'
+export type PrimitiveTypeId = 'post' | 'beam' | 'panel' | 'block' | 'block8'
 
 export interface PrimitiveDefinition {
   id: PrimitiveTypeId
   name: string
   description: string
+  /** Width × height × depth in feet (1 grid unit = 1 foot) */
   size: [number, number, number]
   color: string
   materialLabel: string
+  /** Optional GLB model path (served from /public) */
+  modelUrl?: string
 }
 
 export interface PlacedPrimitive {

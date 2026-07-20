@@ -2,6 +2,9 @@ import type { PrimitiveDefinition } from '../types'
 
 export const GRID_CELL_SIZE = 1
 
+/** Side length of a single 4×4 module in feet / grid cells */
+export const MODULE_4_SIZE = 4
+
 export const PRIMITIVE_DEFINITIONS: PrimitiveDefinition[] = [
   {
     id: 'post',
@@ -29,11 +32,21 @@ export const PRIMITIVE_DEFINITIONS: PrimitiveDefinition[] = [
   },
   {
     id: 'block',
-    name: 'Block',
-    description: '2 × 2 × 2 large block',
-    size: [2, 2, 2],
+    name: '4×4 Module',
+    description: '4 × 9 × 4 ft pavilion module',
+    size: [4, 9, 4],
     color: '#A08060',
-    materialLabel: 'Timber block',
+    materialLabel: '4×4 pavilion module',
+    modelUrl: '/models/4x4-opt.glb',
+  },
+  {
+    id: 'block8',
+    name: '8×8 Module',
+    description: '8 × 9 × 8 ft connected pavilion (auto from 2×2 of 4×4s)',
+    size: [8, 9, 8],
+    color: '#A08060',
+    materialLabel: '8×8 pavilion module',
+    modelUrl: '/models/8x8-opt.glb',
   },
 ]
 
@@ -43,5 +56,5 @@ export function getPrimitiveDefinition(id: string) {
 
 export function formatDimensions(size: [number, number, number]) {
   const [w, h, d] = size
-  return `${w} × ${h} × ${d} units`
+  return `${w} × ${h} × ${d} ft`
 }

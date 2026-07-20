@@ -40,7 +40,7 @@ export function RightSidebar() {
           <span className="stat-card__value">
             {boundingBox.width} × {boundingBox.depth} × {boundingBox.height}
           </span>
-          <span className="stat-card__meta">W × D × H (units)</span>
+          <span className="stat-card__meta">W × D × H (ft)</span>
         </div>
         <div className="stat-card">
           <span className="stat-card__label">Total pieces</span>

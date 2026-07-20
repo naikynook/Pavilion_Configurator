@@ -1,7 +1,12 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { getPrimitiveDefinition } from '../constants/primitives'
 import { canPlacePrimitive, gridToWorldPosition, useDesignStore } from '../store/designStore'
+import type { PrimitiveTypeId } from '../types'
+import { applyModuleMaterials } from './moduleMaterials'
+import { optimizeModuleScene } from './optimizeModule'
 
 type StoreState = ReturnType<typeof useDesignStore.getState>
 
@@ -39,6 +44,71 @@ function createBoxEdgeGeometry(width: number, depth: number, height: number) {
   return geometry
 }
 
+function resolveModelUrl(path: string) {
+  const base = import.meta.env.BASE_URL ?? '/'
+  const normalizedBase = base.endsWith('/') ? base : `${base}/`
+  const normalizedPath = path.startsWith('/') ? path.slice(1) : path
+  return `${normalizedBase}${normalizedPath}`
+}
+
+/** Fit a loaded GLB into target W×H×D (feet), sitting on y=0. */
+function fitModelToSize(source: THREE.Object3D, size: [number, number, number]) {
+  const [targetW, targetH, targetD] = size
+  const root = source.clone(true)
+
+  root.updateMatrixWorld(true)
+  const box = new THREE.Box3().setFromObject(root)
+  const dims = new THREE.Vector3()
+  box.getSize(dims)
+
+  const sx = dims.x > 0 ? targetW / dims.x : 1
+  const sy = dims.y > 0 ? targetH / dims.y : 1
+  const sz = dims.z > 0 ? targetD / dims.z : 1
+  root.scale.set(sx, sy, sz)
+
+  root.updateMatrixWorld(true)
+  const fitted = new THREE.Box3().setFromObject(root)
+  const center = new THREE.Vector3()
+  fitted.getCenter(center)
+
+  // Center XZ; sit bottom on y=0
+  root.position.x -= center.x
+  root.position.z -= center.z
+  root.position.y -= fitted.min.y
+
+  applyModuleMaterials(root)
+
+  const wrapper = new THREE.Group()
+  wrapper.add(root)
+  return wrapper
+}
+
+function setSelectionHighlight(object: THREE.Object3D, selected: boolean) {
+  object.traverse((child) => {
+    if (!(child instanceof THREE.Mesh)) return
+    const materials = Array.isArray(child.material) ? child.material : [child.material]
+    for (const material of materials) {
+      if (
+        material instanceof THREE.MeshStandardMaterial ||
+        material instanceof THREE.MeshPhysicalMaterial
+      ) {
+        material.emissive = new THREE.Color(selected ? 0x0071e3 : 0x000000)
+        material.emissiveIntensity = selected ? 0.15 : 0
+      }
+    }
+  })
+}
+
+function disposeObject(object: THREE.Object3D) {
+  object.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.geometry.dispose()
+      const materials = Array.isArray(child.material) ? child.material : [child.material]
+      materials.forEach((material) => material.dispose())
+    }
+  })
+}
+
 export function createViewport(container: HTMLElement): ViewportApi {
   const width = Math.max(container.clientWidth, 1)
   const height = Math.max(container.clientHeight, 1)
@@ -64,13 +134,16 @@ export function createViewport(container: HTMLElement): ViewportApi {
   controls.maxDistance = 50
   controls.maxPolarAngle = Math.PI / 2 - 0.05
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6))
-  const keyLight = new THREE.DirectionalLight(0xffffff, 0.9)
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55))
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.05)
   keyLight.position.set(10, 15, 8)
   scene.add(keyLight)
-  const fillLight = new THREE.DirectionalLight(0xffffff, 0.25)
+  const fillLight = new THREE.DirectionalLight(0xffffff, 0.35)
   fillLight.position.set(-5, 8, -5)
   scene.add(fillLight)
+  const rimLight = new THREE.DirectionalLight(0xffffff, 0.25)
+  rimLight.position.set(0, 6, -10)
+  scene.add(rimLight)
 
   const gridGroup = new THREE.Group()
   let gridHelper = new THREE.GridHelper(20, 20, 0xd2d2d7, 0xe8e8ed)
@@ -80,7 +153,7 @@ export function createViewport(container: HTMLElement): ViewportApi {
 
   const boundingGroup = new THREE.Group()
   const boundingLines = new THREE.LineSegments(
-    createBoxEdgeGeometry(10, 10, 6),
+    createBoxEdgeGeometry(10, 10, 10),
     new THREE.LineBasicMaterial({ color: 0x0071e3, depthTest: true }),
   )
   const boundingFloor = new THREE.Mesh(
@@ -110,10 +183,51 @@ export function createViewport(container: HTMLElement): ViewportApi {
   const pointer = new THREE.Vector2()
   const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 
-  const primitiveMeshes = new Map<string, THREE.Mesh>()
+  const primitiveObjects = new Map<string, THREE.Object3D>()
+  const modelTemplates = new Map<string, THREE.Object3D>()
+  const modelLoadPromises = new Map<string, Promise<THREE.Object3D>>()
+  const gltfLoader = new GLTFLoader()
+  const dracoLoader = new DRACOLoader()
+  dracoLoader.setDecoderPath(`${import.meta.env.BASE_URL}draco/`)
+  gltfLoader.setDRACOLoader(dracoLoader)
   let animationId = 0
   let currentState = useDesignStore.getState()
   let isDragging = false
+  let disposed = false
+
+  const loadModelTemplate = (typeId: PrimitiveTypeId, modelUrl: string) => {
+    const existing = modelTemplates.get(typeId)
+    if (existing) return Promise.resolve(existing)
+
+    const pending = modelLoadPromises.get(typeId)
+    if (pending) return pending
+
+    const promise = new Promise<THREE.Object3D>((resolve, reject) => {
+      gltfLoader.load(
+        resolveModelUrl(modelUrl),
+        (gltf) => {
+          // Prefer already-optimized assets; still merge if a raw multi-mesh file is loaded
+          let meshCount = 0
+          gltf.scene.traverse((o) => {
+            if ((o as THREE.Mesh).isMesh) meshCount++
+          })
+          const optimized =
+            meshCount > 8 ? optimizeModuleScene(gltf.scene) : gltf.scene
+          modelTemplates.set(typeId, optimized)
+          modelLoadPromises.delete(typeId)
+          resolve(optimized)
+        },
+        undefined,
+        (error) => {
+          modelLoadPromises.delete(typeId)
+          reject(error)
+        },
+      )
+    })
+
+    modelLoadPromises.set(typeId, promise)
+    return promise
+  }
 
   const updateCamera = (box: StoreState['boundingBox']) => {
     const target = new THREE.Vector3(box.width / 2, box.height / 3, box.depth / 2)
@@ -143,38 +257,87 @@ export function createViewport(container: HTMLElement): ViewportApi {
     updateCamera(box)
   }
 
+  const createBoxPrimitive = (
+    primitive: StoreState['primitives'][number],
+    selected: boolean,
+  ) => {
+    const def = getPrimitiveDefinition(primitive.typeId)
+    const [w, h, d] = primitive.size
+    const pos = gridToWorldPosition(primitive.gridX, primitive.gridZ, primitive.size)
+    const color = new THREE.Color(def?.color ?? '#C4A882')
+
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshStandardMaterial({
+        color,
+        roughness: 0.85,
+        metalness: 0.05,
+        emissive: selected ? new THREE.Color(0x0071e3) : new THREE.Color(0x000000),
+        emissiveIntensity: selected ? 0.15 : 0,
+      }),
+    )
+    mesh.position.set(pos.x, pos.y, pos.z)
+    mesh.userData.primitiveId = primitive.id
+    return mesh
+  }
+
+  const createModelPrimitive = (
+    template: THREE.Object3D,
+    primitive: StoreState['primitives'][number],
+    selected: boolean,
+  ) => {
+    const fitted = fitModelToSize(template, primitive.size)
+    // Place footprint origin at grid cell corner, then center of 4×4 base
+    fitted.position.set(
+      primitive.gridX + primitive.size[0] / 2,
+      0,
+      primitive.gridZ + primitive.size[2] / 2,
+    )
+    fitted.userData.primitiveId = primitive.id
+    fitted.traverse((child) => {
+      child.userData.primitiveId = primitive.id
+    })
+    setSelectionHighlight(fitted, selected)
+    return fitted
+  }
+
   const rebuildPrimitives = (state: StoreState) => {
-    for (const mesh of primitiveMeshes.values()) {
-      mesh.geometry.dispose()
-      if (Array.isArray(mesh.material)) {
-        mesh.material.forEach((m) => m.dispose())
-      } else {
-        mesh.material.dispose()
-      }
-      primitivesGroup.remove(mesh)
+    for (const object of primitiveObjects.values()) {
+      disposeObject(object)
+      primitivesGroup.remove(object)
     }
-    primitiveMeshes.clear()
+    primitiveObjects.clear()
 
     for (const primitive of state.primitives) {
       const def = getPrimitiveDefinition(primitive.typeId)
-      const [w, h, d] = primitive.size
-      const pos = gridToWorldPosition(primitive.gridX, primitive.gridZ, primitive.size)
-      const color = new THREE.Color(def?.color ?? '#C4A882')
+      const selected = state.selectedPrimitiveId === primitive.id
 
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(w, h, d),
-        new THREE.MeshStandardMaterial({
-          color,
-          roughness: 0.85,
-          metalness: 0.05,
-          emissive: state.selectedPrimitiveId === primitive.id ? new THREE.Color(0x0071e3) : new THREE.Color(0x000000),
-          emissiveIntensity: state.selectedPrimitiveId === primitive.id ? 0.15 : 0,
-        }),
-      )
-      mesh.position.set(pos.x, pos.y, pos.z)
-      mesh.userData.primitiveId = primitive.id
-      primitivesGroup.add(mesh)
-      primitiveMeshes.set(primitive.id, mesh)
+      if (def?.modelUrl) {
+        const template = modelTemplates.get(primitive.typeId)
+        if (template) {
+          const object = createModelPrimitive(template, primitive, selected)
+          primitivesGroup.add(object)
+          primitiveObjects.set(primitive.id, object)
+        } else {
+          // Placeholder box while GLB loads, then rebuild
+          const placeholder = createBoxPrimitive(primitive, selected)
+          primitivesGroup.add(placeholder)
+          primitiveObjects.set(primitive.id, placeholder)
+
+          void loadModelTemplate(primitive.typeId, def.modelUrl)
+            .then(() => {
+              if (disposed) return
+              rebuildPrimitives(useDesignStore.getState())
+            })
+            .catch((error) => {
+              console.error('Failed to load GLB model:', error)
+            })
+        }
+      } else {
+        const mesh = createBoxPrimitive(primitive, selected)
+        primitivesGroup.add(mesh)
+        primitiveObjects.set(primitive.id, mesh)
+      }
     }
   }
 
@@ -266,10 +429,10 @@ export function createViewport(container: HTMLElement): ViewportApi {
     pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     raycaster.setFromCamera(pointer, camera)
 
-    const hits = raycaster.intersectObjects([...primitiveMeshes.values()])
+    const hits = raycaster.intersectObjects([...primitiveObjects.values()], true)
     if (hits.length > 0) {
-      const id = hits[0].object.userData.primitiveId as string
-      useDesignStore.getState().selectPrimitive(id)
+      const id = hits[0].object.userData.primitiveId as string | undefined
+      useDesignStore.getState().selectPrimitive(id ?? null)
     } else {
       useDesignStore.getState().selectPrimitive(null)
     }
@@ -289,6 +452,16 @@ export function createViewport(container: HTMLElement): ViewportApi {
 
   updateBoundingBox(currentState.boundingBox)
   rebuildPrimitives(currentState)
+
+  // Prefetch pavilion module GLBs so first placement / merge is fast
+  for (const id of ['block', 'block8'] as const) {
+    const def = getPrimitiveDefinition(id)
+    if (def?.modelUrl) {
+      void loadModelTemplate(id, def.modelUrl).catch((error) => {
+        console.error(`Failed to prefetch ${id} GLB:`, error)
+      })
+    }
+  }
 
   return {
     sync(state: StoreState) {
@@ -324,19 +497,15 @@ export function createViewport(container: HTMLElement): ViewportApi {
     },
 
     dispose() {
+      disposed = true
       cancelAnimationFrame(animationId)
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
       renderer.domElement.removeEventListener('pointermove', onPointerMove)
       renderer.domElement.removeEventListener('pointerleave', onPointerLeave)
       renderer.domElement.removeEventListener('click', onClick)
 
-      for (const mesh of primitiveMeshes.values()) {
-        mesh.geometry.dispose()
-        if (Array.isArray(mesh.material)) {
-          mesh.material.forEach((m) => m.dispose())
-        } else {
-          mesh.material.dispose()
-        }
+      for (const object of primitiveObjects.values()) {
+        disposeObject(object)
       }
 
       boundingLines.geometry.dispose()
@@ -352,6 +521,7 @@ export function createViewport(container: HTMLElement): ViewportApi {
       gridMaterials.forEach((material) => material.dispose())
 
       controls.dispose()
+      dracoLoader.dispose()
       renderer.dispose()
       if (renderer.domElement.parentElement === container) {
         container.removeChild(renderer.domElement)
