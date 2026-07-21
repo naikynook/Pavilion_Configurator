@@ -83,3 +83,34 @@ export function optimizeModuleScene(source: THREE.Object3D): THREE.Group {
 
   return group
 }
+
+/**
+ * Collapse a multi-mesh wall panel GLB into a single mesh for fast draw calls.
+ */
+export function mergePanelScene(source: THREE.Object3D): THREE.Group {
+  source.updateMatrixWorld(true)
+  const geoms: THREE.BufferGeometry[] = []
+
+  source.traverse((child) => {
+    if (!(child instanceof THREE.Mesh) || !child.geometry) return
+    const worldGeom = collectWorldGeometry(child)
+    if (worldGeom) geoms.push(worldGeom)
+  })
+
+  const group = new THREE.Group()
+  group.name = 'optimized-wall-panel'
+
+  if (geoms.length > 0) {
+    const merged = mergeGeometries(geoms, false)
+    geoms.forEach((g) => g.dispose())
+    if (merged) {
+      merged.computeBoundingBox()
+      merged.computeBoundingSphere()
+      const mesh = new THREE.Mesh(merged)
+      mesh.name = 'wall-panel'
+      group.add(mesh)
+    }
+  }
+
+  return group
+}

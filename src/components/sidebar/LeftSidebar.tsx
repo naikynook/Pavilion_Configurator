@@ -1,5 +1,10 @@
 import { useDesignStore } from '../../store/designStore'
-import { PRIMITIVE_DEFINITIONS } from '../../constants/primitives'
+import {
+  BASE_HEIGHT_OPTIONS,
+  FRAME_DEFINITIONS,
+  FURNITURE_DEFINITIONS,
+  PANEL_DEFINITIONS,
+} from '../../constants/primitives'
 import { ToolItem } from '../ui/ToolItem'
 
 function SelectIcon() {
@@ -25,10 +30,12 @@ export function LeftSidebar() {
   const boundingBox = useDesignStore((s) => s.boundingBox)
   const activeTool = useDesignStore((s) => s.activeTool)
   const activePrimitiveType = useDesignStore((s) => s.activePrimitiveType)
+  const activeBaseHeight = useDesignStore((s) => s.activeBaseHeight)
   const selectedPrimitiveId = useDesignStore((s) => s.selectedPrimitiveId)
   const setBoundingBox = useDesignStore((s) => s.setBoundingBox)
   const setActiveTool = useDesignStore((s) => s.setActiveTool)
   const setActivePrimitiveType = useDesignStore((s) => s.setActivePrimitiveType)
+  const setActiveBaseHeight = useDesignStore((s) => s.setActiveBaseHeight)
   const removeSelected = useDesignStore((s) => s.removeSelected)
   const clearPrimitives = useDesignStore((s) => s.clearPrimitives)
 
@@ -99,13 +106,84 @@ export function LeftSidebar() {
       </section>
 
       <section className="sidebar__section">
-        <h2 className="sidebar__section-title">Primitives</h2>
+        <h2 className="sidebar__section-title">Base height</h2>
         <p className="sidebar__hint">
-          Select a primitive, then click the grid to place it. Four 4×4 modules in a square
-          auto-connect into an 8×8.
+          Choose the plywood plinth height, then pick a steel frame to place on top.
+        </p>
+        <div className="segmented" role="group" aria-label="Base height">
+          {BASE_HEIGHT_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={
+                activeBaseHeight === option.value
+                  ? 'segmented__btn segmented__btn--active'
+                  : 'segmented__btn'
+              }
+              onClick={() => setActiveBaseHeight(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="sidebar__section">
+        <h2 className="sidebar__section-title">Steel frame</h2>
+        <p className="sidebar__hint">
+          Two 4×4s connect into a 4×8; a full square becomes an 8×8. Modules only
+          merge when they share the same base height.
         </p>
         <div className="tool-list">
-          {PRIMITIVE_DEFINITIONS.map((def) => (
+          {FRAME_DEFINITIONS.map((def) => (
+            <ToolItem
+              key={def.id}
+              label={def.name}
+              description={def.description}
+              active={activePrimitiveType === def.id}
+              previewColor={def.color}
+              onClick={() =>
+                setActivePrimitiveType(
+                  activePrimitiveType === def.id ? null : def.id,
+                )
+              }
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="sidebar__section">
+        <h2 className="sidebar__section-title">Wall panels</h2>
+        <p className="sidebar__hint">
+          Trimmed plywood sheets with bolt holes. Hover a matching frame wall
+          (4 ft or 8 ft) to snap and attach.
+        </p>
+        <div className="tool-list">
+          {PANEL_DEFINITIONS.map((def) => (
+            <ToolItem
+              key={def.id}
+              label={def.name}
+              description={def.description}
+              active={activePrimitiveType === def.id}
+              previewColor={def.color}
+              onClick={() =>
+                setActivePrimitiveType(
+                  activePrimitiveType === def.id ? null : def.id,
+                )
+              }
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="sidebar__section">
+        <h2 className="sidebar__section-title">Furniture</h2>
+        <p className="sidebar__hint">
+          Hover inside a module — the bench turns to the nearest wall and sits
+          clear of the steel so a panel can still go on that face.
+        </p>
+        <div className="tool-list">
+          {FURNITURE_DEFINITIONS.map((def) => (
             <ToolItem
               key={def.id}
               label={def.name}

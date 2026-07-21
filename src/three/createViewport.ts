@@ -2,11 +2,36 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
-import { getPrimitiveDefinition } from '../constants/primitives'
-import { canPlacePrimitive, gridToWorldPosition, useDesignStore } from '../store/designStore'
-import type { PrimitiveTypeId } from '../types'
-import { applyModuleMaterials } from './moduleMaterials'
-import { optimizeModuleScene } from './optimizeModule'
+import {
+  PANEL_EDGE_CLEARANCE_FT,
+  PANEL_THICKNESS_FT,
+  STEEL_HEIGHT_FT,
+  getModelLocalSize,
+  getPanelLocalSize,
+  getPlaceSize,
+  getPlacementKind,
+  getPrimitiveDefinition,
+  PRIMITIVE_DEFINITIONS,
+} from '../constants/primitives'
+import {
+  canPlacePrimitive,
+  findWallAttachmentNear,
+  gridToWorldPosition,
+  useDesignStore,
+} from '../store/designStore'
+import type { BaseHeightFt, PrimitiveTypeId } from '../types'
+import {
+  BENCH_DEPTH_FT,
+  BENCH_SEAT_HEIGHT_FT,
+  createAccessoryMesh,
+} from './createFurniture'
+import {
+  applyModuleMaterials,
+  createMetalMaterial,
+  createPlywoodMaterial,
+} from './moduleMaterials'
+import { mergePanelScene, optimizeModuleScene } from './optimizeModule'
+import { computeWallAttachment } from '../logic/wallAttach'
 
 type StoreState = ReturnType<typeof useDesignStore.getState>
 
@@ -51,8 +76,8 @@ function resolveModelUrl(path: string) {
   return `${normalizedBase}${normalizedPath}`
 }
 
-/** Fit a loaded GLB into target W×H×D (feet), sitting on y=0. */
-function fitModelToSize(source: THREE.Object3D, size: [number, number, number]) {
+/** Fit an object into target W×H×D (feet), sitting on y=0. */
+function fitObjectToSize(source: THREE.Object3D, size: [number, number, number]) {
   const [targetW, targetH, targetD] = size
   const root = source.clone(true)
 
@@ -76,11 +101,104 @@ function fitModelToSize(source: THREE.Object3D, size: [number, number, number]) 
   root.position.z -= center.z
   root.position.y -= fitted.min.y
 
-  applyModuleMaterials(root)
+  const wrapper = new THREE.Group()
+  wrapper.add(root)
+  return wrapper
+}
+
+/**
+ * Panel.glb is authored flat in XZ (8×8 ft, ~1″ thick on Y).
+ * Orient upright: width X, height Y, thickness Z — then fit & center.
+ */
+function fitPanelModel(
+  source: THREE.Object3D,
+  size: [number, number, number],
+) {
+  const [targetW, targetH, targetT] = size
+  const root = source.clone(true)
+  root.rotation.x = Math.PI / 2
+  root.updateMatrixWorld(true)
+
+  const box = new THREE.Box3().setFromObject(root)
+  const dims = new THREE.Vector3()
+  box.getSize(dims)
+
+  const sx = dims.x > 0 ? targetW / dims.x : 1
+  const sy = dims.y > 0 ? targetH / dims.y : 1
+  const sz = dims.z > 0 ? targetT / dims.z : 1
+  root.scale.set(sx, sy, sz)
+
+  root.updateMatrixWorld(true)
+  const fitted = new THREE.Box3().setFromObject(root)
+  const center = new THREE.Vector3()
+  fitted.getCenter(center)
+  root.position.sub(center)
+
+  root.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.material = createPlywoodMaterial()
+    }
+  })
 
   const wrapper = new THREE.Group()
   wrapper.add(root)
   return wrapper
+}
+
+/** Prefer the optimized steel mesh; otherwise drop the plywood base. */
+function extractSteelTemplate(source: THREE.Object3D): THREE.Object3D {
+  const named = source.getObjectByName('module-steel')
+  if (named) {
+    const group = new THREE.Group()
+    group.add(named.clone(true))
+    return group
+  }
+
+  const clone = source.clone(true)
+  const toRemove: THREE.Object3D[] = []
+  clone.traverse((child) => {
+    if (child.name === 'module-base' || child.name === 'mesh_8') {
+      toRemove.push(child)
+    }
+  })
+  for (const child of toRemove) {
+    child.parent?.remove(child)
+  }
+  return clone
+}
+
+/**
+ * Compose a plywood base of the chosen height with the steel frame on top.
+ */
+function composeModule(
+  template: THREE.Object3D,
+  steelSize: [number, number, number],
+  baseHeight: BaseHeightFt,
+) {
+  const [w, steelH, d] = steelSize
+  const group = new THREE.Group()
+
+  const base = new THREE.Mesh(
+    new THREE.BoxGeometry(w, baseHeight, d),
+    createPlywoodMaterial(),
+  )
+  base.name = 'module-base'
+  base.position.y = baseHeight / 2
+  group.add(base)
+
+  const steel = fitObjectToSize(extractSteelTemplate(template), [w, steelH, d])
+  steel.name = 'module-steel-root'
+  steel.position.y = baseHeight
+  steel.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.name = child.name || 'module-steel'
+      child.material = createMetalMaterial()
+    }
+  })
+  group.add(steel)
+
+  applyModuleMaterials(group)
+  return group
 }
 
 function setSelectionHighlight(object: THREE.Object3D, selected: boolean) {
@@ -199,33 +317,63 @@ export function createViewport(container: HTMLElement): ViewportApi {
     const existing = modelTemplates.get(typeId)
     if (existing) return Promise.resolve(existing)
 
-    const pending = modelLoadPromises.get(typeId)
-    if (pending) return pending
+    // Reuse a template already loaded for another type that shares this URL
+    for (const def of PRIMITIVE_DEFINITIONS) {
+      if (def.modelUrl === modelUrl) {
+        const shared = modelTemplates.get(def.id)
+        if (shared) {
+          modelTemplates.set(typeId, shared)
+          return Promise.resolve(shared)
+        }
+      }
+    }
+
+    const pendingKey = modelUrl
+    const pending = modelLoadPromises.get(pendingKey)
+    if (pending) {
+      return pending.then((template) => {
+        modelTemplates.set(typeId, template)
+        return template
+      })
+    }
 
     const promise = new Promise<THREE.Object3D>((resolve, reject) => {
       gltfLoader.load(
         resolveModelUrl(modelUrl),
         (gltf) => {
-          // Prefer already-optimized assets; still merge if a raw multi-mesh file is loaded
           let meshCount = 0
           gltf.scene.traverse((o) => {
             if ((o as THREE.Mesh).isMesh) meshCount++
           })
-          const optimized =
-            meshCount > 8 ? optimizeModuleScene(gltf.scene) : gltf.scene
-          modelTemplates.set(typeId, optimized)
-          modelLoadPromises.delete(typeId)
-          resolve(optimized)
+
+          const kind = getPlacementKind(typeId)
+          let prepared: THREE.Object3D
+          if (kind === 'wallAttach') {
+            prepared = meshCount > 1 ? mergePanelScene(gltf.scene) : gltf.scene
+          } else if (meshCount > 8) {
+            prepared = optimizeModuleScene(gltf.scene)
+          } else {
+            prepared = gltf.scene
+          }
+
+          for (const def of PRIMITIVE_DEFINITIONS) {
+            if (def.modelUrl === modelUrl) {
+              modelTemplates.set(def.id, prepared)
+            }
+          }
+          modelTemplates.set(typeId, prepared)
+          modelLoadPromises.delete(pendingKey)
+          resolve(prepared)
         },
         undefined,
         (error) => {
-          modelLoadPromises.delete(typeId)
+          modelLoadPromises.delete(pendingKey)
           reject(error)
         },
       )
     })
 
-    modelLoadPromises.set(typeId, promise)
+    modelLoadPromises.set(pendingKey, promise)
     return promise
   }
 
@@ -281,24 +429,99 @@ export function createViewport(container: HTMLElement): ViewportApi {
     return mesh
   }
 
+  const createAccessoryPrimitive = (
+    primitive: StoreState['primitives'][number],
+    selected: boolean,
+  ) => {
+    const def = getPrimitiveDefinition(primitive.typeId)
+    const isPanel =
+      primitive.typeId === 'panel4x8' || primitive.typeId === 'panel8x8'
+
+    if (primitive.hostId && primitive.face) {
+      const host = useDesignStore
+        .getState()
+        .primitives.find((p) => p.id === primitive.hostId)
+      if (host) {
+        const pose = computeWallAttachment(host, primitive.face, primitive.typeId)
+        if (pose) {
+          let group: THREE.Object3D
+
+          if (isPanel && def?.modelUrl) {
+            const template = modelTemplates.get(primitive.typeId)
+            if (template) {
+              group = fitPanelModel(template, getPanelLocalSize(pose.wallWidth))
+            } else {
+              group = createAccessoryMesh(primitive.typeId, pose.wallWidth)
+              void loadModelTemplate(primitive.typeId, def.modelUrl)
+                .then(() => {
+                  if (disposed) return
+                  rebuildPrimitives(useDesignStore.getState())
+                })
+                .catch((error) => {
+                  console.error('Failed to load panel GLB:', error)
+                })
+            }
+          } else {
+            group = createAccessoryMesh(primitive.typeId, pose.wallWidth)
+          }
+
+          group.rotation.y = pose.rotationY
+          group.position.set(pose.center.x, pose.center.y, pose.center.z)
+          group.userData.primitiveId = primitive.id
+          group.traverse((child) => {
+            child.userData.primitiveId = primitive.id
+          })
+          setSelectionHighlight(group, selected)
+          return group
+        }
+      }
+    }
+
+    const group = createAccessoryMesh(primitive.typeId)
+    group.position.set(
+      primitive.gridX + primitive.size[0] / 2,
+      0,
+      primitive.gridZ + primitive.size[2] / 2,
+    )
+    group.rotation.y = primitive.rotationY ?? 0
+    group.userData.primitiveId = primitive.id
+    group.traverse((child) => {
+      child.userData.primitiveId = primitive.id
+    })
+    setSelectionHighlight(group, selected)
+    return group
+  }
+
   const createModelPrimitive = (
     template: THREE.Object3D,
     primitive: StoreState['primitives'][number],
     selected: boolean,
   ) => {
-    const fitted = fitModelToSize(template, primitive.size)
-    // Place footprint origin at grid cell corner, then center of 4×4 base
-    fitted.position.set(
+    const steelLocal =
+      getModelLocalSize(primitive.typeId) ?? [
+        primitive.size[0],
+        STEEL_HEIGHT_FT,
+        primitive.size[2],
+      ]
+    const composed = composeModule(
+      template,
+      steelLocal,
+      primitive.baseHeight ?? 1,
+    )
+    composed.rotation.y = primitive.rotationY ?? 0
+
+    // Place using footprint size (may differ from local model size when rotated)
+    composed.position.set(
       primitive.gridX + primitive.size[0] / 2,
       0,
       primitive.gridZ + primitive.size[2] / 2,
     )
-    fitted.userData.primitiveId = primitive.id
-    fitted.traverse((child) => {
+    composed.userData.primitiveId = primitive.id
+    composed.traverse((child) => {
       child.userData.primitiveId = primitive.id
     })
-    setSelectionHighlight(fitted, selected)
-    return fitted
+    setSelectionHighlight(composed, selected)
+    return composed
   }
 
   const rebuildPrimitives = (state: StoreState) => {
@@ -311,6 +534,14 @@ export function createViewport(container: HTMLElement): ViewportApi {
     for (const primitive of state.primitives) {
       const def = getPrimitiveDefinition(primitive.typeId)
       const selected = state.selectedPrimitiveId === primitive.id
+      const kind = getPlacementKind(primitive.typeId)
+
+      if (kind === 'wallAttach' || kind === 'free') {
+        const object = createAccessoryPrimitive(primitive, selected)
+        primitivesGroup.add(object)
+        primitiveObjects.set(primitive.id, object)
+        continue
+      }
 
       if (def?.modelUrl) {
         const template = modelTemplates.get(primitive.typeId)
@@ -319,7 +550,6 @@ export function createViewport(container: HTMLElement): ViewportApi {
           primitivesGroup.add(object)
           primitiveObjects.set(primitive.id, object)
         } else {
-          // Placeholder box while GLB loads, then rebuild
           const placeholder = createBoxPrimitive(primitive, selected)
           primitivesGroup.add(placeholder)
           primitiveObjects.set(primitive.id, placeholder)
@@ -342,22 +572,55 @@ export function createViewport(container: HTMLElement): ViewportApi {
   }
 
   const updatePreview = (state: StoreState) => {
-    if (state.activeTool !== 'place' || !state.activePrimitiveType || !state.hoverGrid) {
+    if (state.activeTool !== 'place' || !state.activePrimitiveType) {
       previewMesh.visible = false
       return
     }
 
-    const def = getPrimitiveDefinition(state.activePrimitiveType)
-    if (!def) {
+    const kind = getPlacementKind(state.activePrimitiveType)
+
+    if (kind === 'wallAttach') {
+      const attach = state.hoverAttachment
+      if (!attach || !state.placementValid) {
+        previewMesh.visible = false
+        return
+      }
+      // Local mesh axes (length/width on X, thickness/depth on Z) + rotationY —
+      // same as placed accessories. Do not use world AABB size here.
+      const isBench = state.activePrimitiveType === 'bench'
+      const localW = attach.wallWidth - PANEL_EDGE_CLEARANCE_FT
+      const localH = isBench
+        ? BENCH_SEAT_HEIGHT_FT
+        : STEEL_HEIGHT_FT - PANEL_EDGE_CLEARANCE_FT
+      const localD = isBench ? BENCH_DEPTH_FT : PANEL_THICKNESS_FT
+      previewMesh.geometry.dispose()
+      previewMesh.geometry = new THREE.BoxGeometry(localW, localH, localD)
+      // Benches use bottom-origin placement; panels are center-origin
+      const y = isBench ? attach.center.y + localH / 2 : attach.center.y
+      previewMesh.position.set(attach.center.x, y, attach.center.z)
+      previewMesh.rotation.y = attach.rotationY
+      ;(previewMesh.material as THREE.MeshStandardMaterial).color.set(0x0071e3)
+      previewMesh.visible = true
+      return
+    }
+
+    if (!state.hoverGrid) {
       previewMesh.visible = false
       return
     }
 
-    const [w, h, d] = def.size
-    const pos = gridToWorldPosition(state.hoverGrid.x, state.hoverGrid.z, def.size)
+    const size = getPlaceSize(state.activePrimitiveType, state.activeBaseHeight)
+    if (!size) {
+      previewMesh.visible = false
+      return
+    }
+
+    const [w, h, d] = size
+    const pos = gridToWorldPosition(state.hoverGrid.x, state.hoverGrid.z, size)
     previewMesh.geometry.dispose()
     previewMesh.geometry = new THREE.BoxGeometry(w, h, d)
     previewMesh.position.set(pos.x, pos.y, pos.z)
+    previewMesh.rotation.y = 0
     ;(previewMesh.material as THREE.MeshStandardMaterial).color.set(
       state.placementValid ? 0x0071e3 : 0xff3b30,
     )
@@ -376,6 +639,8 @@ export function createViewport(container: HTMLElement): ViewportApi {
     return {
       gridX: Math.floor(hit.x),
       gridZ: Math.floor(hit.z),
+      worldX: hit.x,
+      worldZ: hit.z,
     }
   }
 
@@ -393,14 +658,29 @@ export function createViewport(container: HTMLElement): ViewportApi {
 
     const state = useDesignStore.getState()
     if (state.activeTool === 'place' && state.activePrimitiveType) {
+      const kind = getPlacementKind(state.activePrimitiveType)
+      let attachment = null as ReturnType<typeof findWallAttachmentNear>
+      if (kind === 'wallAttach') {
+        attachment = findWallAttachmentNear(
+          gridPos.worldX,
+          gridPos.worldZ,
+          state.activePrimitiveType,
+          state.primitives,
+        )
+      }
       const valid = canPlacePrimitive(
         state.activePrimitiveType,
         gridPos.gridX,
         gridPos.gridZ,
         state.boundingBox,
         state.primitives,
+        state.activeBaseHeight,
+        undefined,
+        attachment,
       )
-      useDesignStore.getState().setHoverGrid({ x: gridPos.gridX, z: gridPos.gridZ }, valid)
+      useDesignStore
+        .getState()
+        .setHoverGrid({ x: gridPos.gridX, z: gridPos.gridZ }, valid, attachment)
       renderer.domElement.style.cursor = valid ? 'crosshair' : 'not-allowed'
     } else {
       renderer.domElement.style.cursor = 'default'
@@ -453,8 +733,8 @@ export function createViewport(container: HTMLElement): ViewportApi {
   updateBoundingBox(currentState.boundingBox)
   rebuildPrimitives(currentState)
 
-  // Prefetch pavilion module GLBs so first placement / merge is fast
-  for (const id of ['block', 'block8'] as const) {
+  // Prefetch pavilion module + panel GLBs so first placement / merge is fast
+  for (const id of ['block', 'block4x8', 'block8', 'panel4x8', 'panel8x8'] as const) {
     const def = getPrimitiveDefinition(id)
     if (def?.modelUrl) {
       void loadModelTemplate(id, def.modelUrl).catch((error) => {
@@ -477,7 +757,9 @@ export function createViewport(container: HTMLElement): ViewportApi {
       const previewChanged =
         state.activeTool !== currentState.activeTool ||
         state.activePrimitiveType !== currentState.activePrimitiveType ||
+        state.activeBaseHeight !== currentState.activeBaseHeight ||
         state.hoverGrid !== currentState.hoverGrid ||
+        state.hoverAttachment !== currentState.hoverAttachment ||
         state.placementValid !== currentState.placementValid
 
       currentState = state

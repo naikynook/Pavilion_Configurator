@@ -8,8 +8,9 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "optimize:model": "node scripts/optimize-4x4.mjs 4x4",
+    "optimize:model:4x8": "node scripts/optimize-4x4.mjs 4x8",
     "optimize:model:8x8": "node scripts/optimize-4x4.mjs 8x8",
-    "optimize:models": "node scripts/optimize-4x4.mjs 4x4 && node scripts/optimize-4x4.mjs 8x8"
+    "optimize:models": "node scripts/optimize-4x4.mjs 4x4 && node scripts/optimize-4x4.mjs 4x8 && node scripts/optimize-4x4.mjs 8x8"
   },
   "dependencies": {
     "react": "^18.3.1",

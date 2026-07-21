@@ -6,17 +6,18 @@ function createPlywoodTexture() {
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = '#D2B48C'
+  // Light birch / maple plywood base
+  ctx.fillStyle = '#E8DCC8'
   ctx.fillRect(0, 0, size, size)
 
   for (let y = 0; y < size; y += 1) {
     const band = Math.floor(y / 18) % 2
-    const shade = band === 0 ? 0.92 : 1.05
+    const shade = band === 0 ? 0.96 : 1.04
     const noise = (Math.sin(y * 0.35) + Math.sin(y * 0.11 + 2)) * 4
-    ctx.fillStyle = `rgba(${Math.floor(180 * shade)}, ${Math.floor(140 * shade)}, ${Math.floor(90 * shade)}, 0.18)`
+    ctx.fillStyle = `rgba(${Math.floor(210 * shade)}, ${Math.floor(195 * shade)}, ${Math.floor(170 * shade)}, 0.16)`
     ctx.fillRect(0, y, size, 1)
     if (y % 18 === 0) {
-      ctx.strokeStyle = 'rgba(120, 85, 50, 0.25)'
+      ctx.strokeStyle = 'rgba(170, 150, 120, 0.22)'
       ctx.beginPath()
       ctx.moveTo(0, y + noise * 0.1)
       ctx.lineTo(size, y + noise * 0.1)
@@ -26,7 +27,7 @@ function createPlywoodTexture() {
 
   for (let i = 0; i < 90; i++) {
     const x = Math.random() * size
-    ctx.strokeStyle = `rgba(110, 75, 40, ${0.04 + Math.random() * 0.08})`
+    ctx.strokeStyle = `rgba(160, 140, 110, ${0.03 + Math.random() * 0.06})`
     ctx.lineWidth = 1 + Math.random() * 2
     ctx.beginPath()
     ctx.moveTo(x, 0)
@@ -52,12 +53,13 @@ function createMetalTexture() {
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = '#8A8F96'
+  // Cool gray brushed metal
+  ctx.fillStyle = '#B0B5BC'
   ctx.fillRect(0, 0, size, size)
 
   for (let y = 0; y < size; y++) {
-    const shade = 0.85 + Math.random() * 0.25
-    ctx.fillStyle = `rgba(${Math.floor(140 * shade)}, ${Math.floor(145 * shade)}, ${Math.floor(150 * shade)}, 0.35)`
+    const shade = 0.9 + Math.random() * 0.2
+    ctx.fillStyle = `rgba(${Math.floor(175 * shade)}, ${Math.floor(180 * shade)}, ${Math.floor(186 * shade)}, 0.3)`
     ctx.fillRect(0, y, size, 1)
   }
 
@@ -84,21 +86,21 @@ function getMetalMap() {
 
 export function createPlywoodMaterial() {
   return new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#C9A36A'),
+    color: new THREE.Color('#F0E6D4'),
     map: getPlywoodMap(),
-    roughness: 0.85,
+    roughness: 0.88,
     metalness: 0.02,
-    envMapIntensity: 0.4,
+    envMapIntensity: 0.35,
   })
 }
 
 export function createMetalMaterial() {
   return new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#9AA0A8'),
+    color: new THREE.Color('#C5CAD1'),
     map: getMetalMap(),
-    roughness: 0.35,
-    metalness: 0.95,
-    envMapIntensity: 1.2,
+    roughness: 0.32,
+    metalness: 0.92,
+    envMapIntensity: 1.15,
   })
 }
 
