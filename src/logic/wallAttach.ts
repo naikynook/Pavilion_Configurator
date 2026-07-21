@@ -24,6 +24,12 @@ export const BENCH_STEEL_SETBACK_FT = 0.35
 export { BENCH_DEPTH_FT, BENCH_SEAT_HEIGHT_FT }
 export const BENCH_TOTAL_HEIGHT_FT = BENCH_SEAT_HEIGHT_FT
 
+/** How far past a wall the pointer can be and still snap (ft). */
+const PANEL_SNAP_FT = 4.5
+const BENCH_CAPTURE_MARGIN_FT = 1.75
+/** Keep current wall until another is this much closer (normalized 0–1). */
+const FACE_STICKY_RATIO = 1.2
+
 function wallWidthForFace(host: PlacedPrimitive, face: WallFace) {
   return face === 'north' || face === 'south' ? host.size[0] : host.size[2]
 }
@@ -61,22 +67,40 @@ function faceAlreadyOccupied(
 }
 
 /** Nearest wall from a point inside the module (normalized distances). */
+function faceDistancesInside(
+  worldX: number,
+  worldZ: number,
+  host: PlacedPrimitive,
+): Record<WallFace, number> {
+  const nx = (worldX - host.gridX) / Math.max(host.size[0], 1e-6)
+  const nz = (worldZ - host.gridZ) / Math.max(host.size[2], 1e-6)
+  return {
+    south: nz,
+    north: 1 - nz,
+    west: nx,
+    east: 1 - nx,
+  }
+}
+
 function nearestFaceInside(
   worldX: number,
   worldZ: number,
   host: PlacedPrimitive,
+  stickyFace?: WallFace | null,
 ): WallFace {
-  const nx = (worldX - host.gridX) / Math.max(host.size[0], 1e-6)
-  const nz = (worldZ - host.gridZ) / Math.max(host.size[2], 1e-6)
-  const distSouth = nz
-  const distNorth = 1 - nz
-  const distWest = nx
-  const distEast = 1 - nx
-  const min = Math.min(distSouth, distNorth, distWest, distEast)
-  if (min === distSouth) return 'south'
-  if (min === distNorth) return 'north'
-  if (min === distWest) return 'west'
-  return 'east'
+  const dists = faceDistancesInside(worldX, worldZ, host)
+  let best: WallFace = 'south'
+  let bestDist = Infinity
+  for (const face of FACE_ORDER) {
+    if (dists[face] < bestDist) {
+      bestDist = dists[face]
+      best = face
+    }
+  }
+  if (stickyFace && dists[stickyFace] <= bestDist * FACE_STICKY_RATIO) {
+    return stickyFace
+  }
+  return best
 }
 
 /**
@@ -113,7 +137,6 @@ export function computeWallAttachment(
 
     switch (face) {
       case 'south':
-        // Back faces south steel; sit in front (inward) of the tube
         centerZ = hz + setback + depth / 2
         rotationY = 0
         size = [length, height, depth]
@@ -212,10 +235,104 @@ function distToFacePlane(
   }
 }
 
+/** Lateral distance past the wall segment ends (0 = on the wall). */
+function lateralOverhang(
+  worldX: number,
+  worldZ: number,
+  host: PlacedPrimitive,
+  face: WallFace,
+) {
+  const hx = host.gridX
+  const hz = host.gridZ
+  const [hw, , hd] = host.size
+  if (face === 'north' || face === 'south') {
+    if (worldX < hx) return hx - worldX
+    if (worldX > hx + hw) return worldX - (hx + hw)
+    return 0
+  }
+  if (worldZ < hz) return hz - worldZ
+  if (worldZ > hz + hd) return worldZ - (hz + hd)
+  return 0
+}
+
 /**
- * Pick the closest valid wall face near a world XZ point.
+ * Intersect a camera ray with a module wall plane and return the hit if it
+ * lands on (or near) that wall rectangle.
+ */
+function rayHitWallFace(
+  origin: { x: number; y: number; z: number },
+  direction: { x: number; y: number; z: number },
+  host: PlacedPrimitive,
+  face: WallFace,
+  padFt = 1.25,
+): { x: number; y: number; z: number; t: number } | null {
+  const hx = host.gridX
+  const hz = host.gridZ
+  const [hw, , hd] = host.size
+  const baseY = host.baseHeight ?? 1
+  const yMin = baseY - 0.5
+  const yMax = baseY + STEEL_HEIGHT_FT + 1.5
+
+  let planeX = 0
+  let planeZ = 0
+  let nx = 0
+  let nz = 0
+  switch (face) {
+    case 'south':
+      planeZ = hz
+      nz = -1
+      break
+    case 'north':
+      planeZ = hz + hd
+      nz = 1
+      break
+    case 'west':
+      planeX = hx
+      nx = -1
+      break
+    case 'east':
+      planeX = hx + hw
+      nx = 1
+      break
+  }
+
+  const denom = nx * direction.x + nz * direction.z
+  if (Math.abs(denom) < 1e-6) return null
+
+  const t =
+    face === 'south' || face === 'north'
+      ? (planeZ - origin.z) / direction.z
+      : (planeX - origin.x) / direction.x
+  if (t < 0.05 || t > 80) return null
+
+  const x = origin.x + direction.x * t
+  const y = origin.y + direction.y * t
+  const z = origin.z + direction.z * t
+  if (y < yMin || y > yMax) return null
+
+  if (face === 'south' || face === 'north') {
+    if (x < hx - padFt || x > hx + hw + padFt) return null
+  } else if (z < hz - padFt || z > hz + hd + padFt) {
+    return null
+  }
+
+  return { x, y, z, t }
+}
+
+export interface WallAttachPickOptions {
+  /** Previous face — reduces flicker near corners while dragging. */
+  stickyFace?: WallFace | null
+  /** Camera ray for aiming at walls in 3D (preferred over ground alone). */
+  ray?: {
+    origin: { x: number; y: number; z: number }
+    direction: { x: number; y: number; z: number }
+  } | null
+}
+
+/**
+ * Pick the closest valid wall face near a world XZ point (and optional camera ray).
  * Benches: nearest wall from inside the module (auto-orients as you move).
- * Panels: exterior face near the cursor.
+ * Panels: exterior face near the cursor / ray.
  */
 export function findWallAttachmentNear(
   worldX: number,
@@ -223,20 +340,46 @@ export function findWallAttachmentNear(
   typeId: PrimitiveTypeId,
   primitives: PlacedPrimitive[],
   excludeId?: string,
+  options: WallAttachPickOptions = {},
 ): WallAttachmentTarget | null {
   const def = getPrimitiveDefinition(typeId)
   if (!def || def.kind !== 'wallAttach') return null
 
   const hosts = primitives.filter((p) => isModuleType(p.typeId))
   const isBench = typeId === 'bench'
+  const { stickyFace = null, ray = null } = options
+
+  // Prefer aiming directly at a wall in the 3D view
+  if (ray) {
+    let bestRay: {
+      target: WallAttachmentTarget
+      t: number
+    } | null = null
+
+    for (const host of hosts) {
+      for (const face of FACE_ORDER) {
+        if (faceAlreadyOccupied(primitives, host.id, face, typeId, excludeId)) {
+          continue
+        }
+        const hit = rayHitWallFace(ray.origin, ray.direction, host, face)
+        if (!hit) continue
+        const target = computeWallAttachment(host, face, typeId)
+        if (!target) continue
+        if (!bestRay || hit.t < bestRay.t) {
+          bestRay = { target, t: hit.t }
+        }
+      }
+    }
+
+    if (bestRay) return bestRay.target
+  }
 
   if (isBench) {
-    // Prefer the module that contains the cursor; orient to nearest wall inside it
     let containing: PlacedPrimitive | null = null
     let containingDist = Infinity
 
     for (const host of hosts) {
-      const margin = 0.75
+      const margin = BENCH_CAPTURE_MARGIN_FT
       const inOrNear =
         worldX >= host.gridX - margin &&
         worldX <= host.gridX + host.size[0] + margin &&
@@ -248,7 +391,7 @@ export function findWallAttachmentNear(
       const cz = host.gridZ + host.size[2] / 2
       const dist = Math.hypot(worldX - cx, worldZ - cz)
       const inside = pointInsideHost(worldX, worldZ, host)
-      const score = inside ? dist : dist + 100
+      const score = inside ? dist : dist + 50
       if (score < containingDist) {
         containingDist = score
         containing = host
@@ -267,7 +410,7 @@ export function findWallAttachmentNear(
       host.gridZ + host.size[2] - 0.05,
     )
 
-    const preferred = nearestFaceInside(clampedX, clampedZ, host)
+    const preferred = nearestFaceInside(clampedX, clampedZ, host, stickyFace)
     const ordered = [
       preferred,
       ...FACE_ORDER.filter((f) => f !== preferred),
@@ -283,9 +426,9 @@ export function findWallAttachmentNear(
     return null
   }
 
-  // Panels — exterior snap
+  // Panels — exterior snap from ground cursor
   let best: WallAttachmentTarget | null = null
-  let bestDist = Infinity
+  let bestScore = Infinity
 
   for (const host of hosts) {
     for (const face of FACE_ORDER) {
@@ -296,11 +439,17 @@ export function findWallAttachmentNear(
       if (!target) continue
 
       const planeDist = distToFacePlane(worldX, worldZ, host, face)
-      if (Math.abs(planeDist) > 2.5) continue
+      const absPlane = Math.abs(planeDist)
+      if (absPlane > PANEL_SNAP_FT) continue
 
-      const dist = Math.hypot(worldX - target.center.x, worldZ - target.center.z)
-      if (dist < bestDist) {
-        bestDist = dist
+      const lateral = lateralOverhang(worldX, worldZ, host, face)
+      if (lateral > 2) continue
+
+      // Prefer near the wall plane; slight bias to exterior side
+      const sideBias = planeDist >= -0.35 ? 0 : 0.75
+      const score = absPlane + lateral * 0.5 + sideBias
+      if (score < bestScore) {
+        bestScore = score
         best = target
       }
     }

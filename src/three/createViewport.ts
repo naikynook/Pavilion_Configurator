@@ -19,7 +19,7 @@ import {
   gridToWorldPosition,
   useDesignStore,
 } from '../store/designStore'
-import type { BaseHeightFt, PrimitiveTypeId } from '../types'
+import type { BaseHeightFt, PrimitiveTypeId, WallFace } from '../types'
 import {
   BENCH_DEPTH_FT,
   BENCH_SEAT_HEIGHT_FT,
@@ -641,8 +641,22 @@ export function createViewport(container: HTMLElement): ViewportApi {
       gridZ: Math.floor(hit.z),
       worldX: hit.x,
       worldZ: hit.z,
+      ray: {
+        origin: {
+          x: raycaster.ray.origin.x,
+          y: raycaster.ray.origin.y,
+          z: raycaster.ray.origin.z,
+        },
+        direction: {
+          x: raycaster.ray.direction.x,
+          y: raycaster.ray.direction.y,
+          z: raycaster.ray.direction.z,
+        },
+      },
     }
   }
+
+  let stickyWallFace: WallFace | null = null
 
   const onPointerDown = () => {
     isDragging = false
@@ -666,7 +680,15 @@ export function createViewport(container: HTMLElement): ViewportApi {
           gridPos.worldZ,
           state.activePrimitiveType,
           state.primitives,
+          undefined,
+          {
+            stickyFace: stickyWallFace,
+            ray: gridPos.ray,
+          },
         )
+        stickyWallFace = attachment?.face ?? null
+      } else {
+        stickyWallFace = null
       }
       const valid = canPlacePrimitive(
         state.activePrimitiveType,
@@ -683,11 +705,13 @@ export function createViewport(container: HTMLElement): ViewportApi {
         .setHoverGrid({ x: gridPos.gridX, z: gridPos.gridZ }, valid, attachment)
       renderer.domElement.style.cursor = valid ? 'crosshair' : 'not-allowed'
     } else {
+      stickyWallFace = null
       renderer.domElement.style.cursor = 'default'
     }
   }
 
   const onPointerLeave = () => {
+    stickyWallFace = null
     useDesignStore.getState().setHoverGrid(null, false)
     renderer.domElement.style.cursor = 'default'
   }

@@ -155,8 +155,8 @@ export function LeftSidebar() {
       <section className="sidebar__section">
         <h2 className="sidebar__section-title">Wall panels</h2>
         <p className="sidebar__hint">
-          Trimmed plywood sheets with bolt holes. Hover a matching frame wall
-          (4 ft or 8 ft) to snap and attach.
+          Aim at a matching wall in the 3D view (4 ft or 8 ft bay) — the panel
+          snaps when you point at or near that face.
         </p>
         <div className="tool-list">
           {PANEL_DEFINITIONS.map((def) => (
@@ -179,8 +179,8 @@ export function LeftSidebar() {
       <section className="sidebar__section">
         <h2 className="sidebar__section-title">Furniture</h2>
         <p className="sidebar__hint">
-          Hover inside a module — the bench turns to the nearest wall and sits
-          clear of the steel so a panel can still go on that face.
+          Aim at a wall or hover inside a module — the bench turns to that wall
+          and sits clear of the steel so a panel can still go on that face.
         </p>
         <div className="tool-list">
           {FURNITURE_DEFINITIONS.map((def) => (
