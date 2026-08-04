@@ -19,6 +19,7 @@ import {
   findWallAttachmentNear,
   pruneOrphanAttachments,
 } from '../logic/wallAttach'
+import { findCornerAttachmentNear } from '../logic/cornerAttach'
 
 interface DesignState {
   boundingBox: BoundingBox
@@ -46,10 +47,14 @@ interface DesignState {
   clearPrimitives: () => void
 }
 
+function isHostedKind(kind: string) {
+  return kind === 'wallAttach' || kind === 'cornerAttach'
+}
+
 function occupiesCells(primitive: PlacedPrimitive) {
   const kind = getPlacementKind(primitive.typeId)
-  // Wall-mounted items hang on frames — they don't reserve floor cells
-  if (kind === 'wallAttach') return []
+  // Attachments sit on modules — they don't reserve floor cells
+  if (isHostedKind(kind)) return []
 
   const cells: Array<{ x: number; z: number }> = []
   const [w, , d] = primitive.size
@@ -72,7 +77,7 @@ function getOccupiedCellSet(
   const set = new Set<string>()
   for (const p of primitives) {
     const kind = getPlacementKind(p.typeId)
-    if (kind === 'wallAttach') continue
+    if (isHostedKind(kind)) continue
     if (kind === 'module' && !includeModules) continue
     if (kind === 'free' && !includeFree) continue
     for (const cell of occupiesCells(p)) {
@@ -94,7 +99,7 @@ export function canPlacePrimitive(
 ) {
   const kind = getPlacementKind(typeId)
 
-  if (kind === 'wallAttach') {
+  if (isHostedKind(kind)) {
     return attachment != null
   }
 
@@ -170,7 +175,13 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       const sameAttach =
         state.hoverAttachment?.hostId === attachment?.hostId &&
         state.hoverAttachment?.face === attachment?.face &&
-        state.hoverAttachment?.rotationY === attachment?.rotationY
+        state.hoverAttachment?.corner === attachment?.corner &&
+        state.hoverAttachment?.cellIx === attachment?.cellIx &&
+        state.hoverAttachment?.cellIz === attachment?.cellIz &&
+        state.hoverAttachment?.rotationY === attachment?.rotationY &&
+        state.hoverAttachment?.attachAlong === attachment?.attachAlong &&
+        state.hoverAttachment?.center.x === attachment?.center.x &&
+        state.hoverAttachment?.center.z === attachment?.center.z
       if (sameGrid && sameAttach && state.placementValid === valid) {
         return state
       }
@@ -197,7 +208,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
 
     const kind = getPlacementKind(activePrimitiveType)
 
-    if (kind === 'wallAttach') {
+    if (isHostedKind(kind)) {
       if (
         !canPlacePrimitive(
           activePrimitiveType,
@@ -220,13 +231,17 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       const primitive: PlacedPrimitive = {
         id: crypto.randomUUID(),
         typeId: activePrimitiveType,
-        gridX: host.gridX,
-        gridZ: host.gridZ,
+        gridX: Math.floor(hoverAttachment.center.x - hoverAttachment.size[0] / 2),
+        gridZ: Math.floor(hoverAttachment.center.z - hoverAttachment.size[2] / 2),
         size: hoverAttachment.size,
         baseHeight: host.baseHeight,
         rotationY: hoverAttachment.rotationY,
         hostId: hoverAttachment.hostId,
         face: hoverAttachment.face,
+        corner: hoverAttachment.corner,
+        cellIx: hoverAttachment.cellIx,
+        cellIz: hoverAttachment.cellIz,
+        attachAlong: hoverAttachment.attachAlong,
       }
       set({ primitives: [...primitives, primitive], selectedPrimitiveId: null })
       return
@@ -254,22 +269,19 @@ export const useDesignStore = create<DesignState>((set, get) => ({
       gridX,
       gridZ,
       size,
-      baseHeight: kind === 'module' ? activeBaseHeight : undefined,
+      baseHeight: isModuleType(activePrimitiveType) ? activeBaseHeight : undefined,
     }
 
-    if (kind === 'module') {
-      const merged = mergeModules([...primitives, primitive])
-      set({
-        primitives: pruneOrphanAttachments(merged),
-        selectedPrimitiveId: null,
-      })
-    } else {
-      set({ primitives: [...primitives, primitive], selectedPrimitiveId: null })
+    let next = [...primitives, primitive]
+    if (isModuleType(activePrimitiveType)) {
+      next = mergeModules(next)
+      next = pruneOrphanAttachments(next)
     }
+    set({ primitives: next, selectedPrimitiveId: null })
   },
 
   removeSelected: () => {
-    const { selectedPrimitiveId, primitives } = get()
+    const { primitives, selectedPrimitiveId } = get()
     if (!selectedPrimitiveId) return
     // Also remove wall items attached to a deleted host module
     const next = primitives.filter(
@@ -307,4 +319,4 @@ export function gridToWorldPosition(
   }
 }
 
-export { findWallAttachmentNear }
+export { findWallAttachmentNear, findCornerAttachmentNear }

@@ -13,6 +13,12 @@ export const MODULE_4_SIZE = 4
 /** Steel frame height in feet (above the plywood base) */
 export const STEEL_HEIGHT_FT = 8
 
+/**
+ * How far the steel frame sits in from the plywood base outer edge (ft).
+ * ~1″ lip — steel stays essentially full module length (e.g. 8 ft on an 8×8).
+ */
+export const STEEL_EDGE_INSET_FT = 0.085
+
 /** Visual thickness of wall panels (¾″ plywood ≈ 0.0625 ft; slightly exaggerated) */
 export const PANEL_THICKNESS_FT = 0.08
 
@@ -81,11 +87,21 @@ export const PRIMITIVE_DEFINITIONS: PrimitiveDefinition[] = [
   {
     id: 'bench',
     name: 'Wall Bench',
-    description: 'Low plywood bench — auto-orients to the nearest wall',
-    size: [8, 1.33, 1.5],
+    description: '4 ft plywood bench — place along a wall as individual pieces',
+    size: [4, 1.33, 1.5],
     color: '#CDB892',
     materialLabel: 'Wall bench',
     kind: 'wallAttach',
+  },
+  {
+    id: 'benchCorner',
+    name: 'Corner Bench',
+    description:
+      'L-shaped bench spanning an entire 4×4 base — snap to any base-cell corner',
+    size: [4, 1.33, 4],
+    color: '#CDB892',
+    materialLabel: 'Corner bench',
+    kind: 'cornerAttach',
   },
   {
     id: 'podium',
@@ -103,7 +119,7 @@ export const PANEL_DEFINITIONS = PRIMITIVE_DEFINITIONS.filter(
   (d) => d.id === 'panel4x8' || d.id === 'panel8x8',
 )
 export const FURNITURE_DEFINITIONS = PRIMITIVE_DEFINITIONS.filter(
-  (d) => d.id === 'bench' || d.id === 'podium',
+  (d) => d.id === 'bench' || d.id === 'benchCorner' || d.id === 'podium',
 )
 
 export function getPrimitiveDefinition(id: string) {
@@ -158,14 +174,14 @@ export function getModelLocalSize(
   if (typeId === 'block4x8') return [4, STEEL_HEIGHT_FT, 8]
   if (typeId === 'panel4x8') {
     return [
-      4 - PANEL_EDGE_CLEARANCE_FT,
+      4 - 2 * STEEL_EDGE_INSET_FT - PANEL_EDGE_CLEARANCE_FT,
       STEEL_HEIGHT_FT - PANEL_EDGE_CLEARANCE_FT,
       PANEL_THICKNESS_FT,
     ]
   }
   if (typeId === 'panel8x8') {
     return [
-      8 - PANEL_EDGE_CLEARANCE_FT,
+      8 - 2 * STEEL_EDGE_INSET_FT - PANEL_EDGE_CLEARANCE_FT,
       STEEL_HEIGHT_FT - PANEL_EDGE_CLEARANCE_FT,
       PANEL_THICKNESS_FT,
     ]
@@ -179,7 +195,7 @@ export function getModelLocalSize(
 /** Panel mesh local size for a given wall width (feet). */
 export function getPanelLocalSize(wallWidth: number): [number, number, number] {
   return [
-    wallWidth - PANEL_EDGE_CLEARANCE_FT,
+    wallWidth - 2 * STEEL_EDGE_INSET_FT - PANEL_EDGE_CLEARANCE_FT,
     STEEL_HEIGHT_FT - PANEL_EDGE_CLEARANCE_FT,
     PANEL_THICKNESS_FT,
   ]

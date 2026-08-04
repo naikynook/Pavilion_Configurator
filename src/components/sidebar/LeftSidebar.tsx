@@ -109,6 +109,7 @@ export function LeftSidebar() {
         <h2 className="sidebar__section-title">Base height</h2>
         <p className="sidebar__hint">
           Choose the plywood plinth height, then pick a steel frame to place on top.
+          Bases stay as separate 4×4 boxes joined with furniture slider connectors.
         </p>
         <div className="segmented" role="group" aria-label="Base height">
           {BASE_HEIGHT_OPTIONS.map((option) => (
@@ -131,8 +132,9 @@ export function LeftSidebar() {
       <section className="sidebar__section">
         <h2 className="sidebar__section-title">Steel frame</h2>
         <p className="sidebar__hint">
-          Two 4×4s connect into a 4×8; a full square becomes an 8×8. Modules only
-          merge when they share the same base height.
+          Adjacent frames combine steel into a 4×8 or 8×8, but the plywood bases
+          stay as individual 4×4 boxes with slider connectors. Same base height
+          required to join.
         </p>
         <div className="tool-list">
           {FRAME_DEFINITIONS.map((def) => (
@@ -179,8 +181,8 @@ export function LeftSidebar() {
       <section className="sidebar__section">
         <h2 className="sidebar__section-title">Furniture</h2>
         <p className="sidebar__hint">
-          Aim at a wall or hover inside a module — the bench turns to that wall
-          and sits clear of the steel so a panel can still go on that face.
+          Wall benches snap into 4 ft wall bays (two on an 8 ft wall).           Corner benches are an L on one 4×4 base corner — hover the corner to
+          place (clears the steel, lines up with wall benches).
         </p>
         <div className="tool-list">
           {FURNITURE_DEFINITIONS.map((def) => (

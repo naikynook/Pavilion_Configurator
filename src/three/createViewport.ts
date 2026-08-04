@@ -5,6 +5,7 @@ import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import {
   PANEL_EDGE_CLEARANCE_FT,
   PANEL_THICKNESS_FT,
+  STEEL_EDGE_INSET_FT,
   STEEL_HEIGHT_FT,
   getModelLocalSize,
   getPanelLocalSize,
@@ -15,6 +16,7 @@ import {
 } from '../constants/primitives'
 import {
   canPlacePrimitive,
+  findCornerAttachmentNear,
   findWallAttachmentNear,
   gridToWorldPosition,
   useDesignStore,
@@ -23,7 +25,9 @@ import type { BaseHeightFt, PrimitiveTypeId, WallFace } from '../types'
 import {
   BENCH_DEPTH_FT,
   BENCH_SEAT_HEIGHT_FT,
+  benchLengthForWall,
   createAccessoryMesh,
+  createCornerBenchPreviewMesh,
 } from './createFurniture'
 import {
   applyModuleMaterials,
@@ -32,6 +36,7 @@ import {
 } from './moduleMaterials'
 import { mergePanelScene, optimizeModuleScene } from './optimizeModule'
 import { computeWallAttachment } from '../logic/wallAttach'
+import { computeCornerAttachment } from '../logic/cornerAttach'
 
 type StoreState = ReturnType<typeof useDesignStore.getState>
 
@@ -167,8 +172,121 @@ function extractSteelTemplate(source: THREE.Object3D): THREE.Object3D {
   return clone
 }
 
+const BASE_CELL_FT = 4
+/** Visible joint between adjacent 4×4 boxes — ~1½″ (couple inches max). */
+const BASE_SEAM_GAP_FT = 0.125
+
 /**
- * Compose a plywood base of the chosen height with the steel frame on top.
+ * Real builds keep discrete 4×4 plywood boxes joined with slider connectors.
+ * Tile the plinth to match that — even when the steel frame is a merged 4×8 / 8×8.
+ *
+ * Outer edges are inset by half a seam so two modules placed edge-to-edge
+ * (e.g. two 8×8s) show the same gap as internal box joints, while everything
+ * stays centered neatly inside the grid footprint.
+ */
+function createTiledPlywoodBase(
+  footprintW: number,
+  footprintD: number,
+  baseHeight: number,
+) {
+  const group = new THREE.Group()
+  group.name = 'module-base-root'
+
+  const cellsX = Math.max(1, Math.round(footprintW / BASE_CELL_FT))
+  const cellsZ = Math.max(1, Math.round(footprintD / BASE_CELL_FT))
+  const outerInset = BASE_SEAM_GAP_FT / 2
+  const usableW = Math.max(footprintW - 2 * outerInset, BASE_CELL_FT * 0.85)
+  const usableD = Math.max(footprintD - 2 * outerInset, BASE_CELL_FT * 0.85)
+  const gap = cellsX > 1 || cellsZ > 1 ? BASE_SEAM_GAP_FT : 0
+  const boxW = (usableW - gap * (cellsX - 1)) / cellsX
+  const boxD = (usableD - gap * (cellsZ - 1)) / cellsZ
+  const ply = createPlywoodMaterial()
+  const metal = createMetalMaterial()
+
+  const originX = -usableW / 2
+  const originZ = -usableD / 2
+
+  for (let ix = 0; ix < cellsX; ix++) {
+    for (let iz = 0; iz < cellsZ; iz++) {
+      const cx = originX + ix * (boxW + gap) + boxW / 2
+      const cz = originZ + iz * (boxD + gap) + boxD / 2
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(boxW, baseHeight, boxD),
+        ply,
+      )
+      box.name = 'module-base'
+      box.position.set(cx, baseHeight / 2, cz)
+      group.add(box)
+    }
+  }
+
+  // Furniture slider connectors along each shared edge (2 per seam)
+  const connectorLen = Math.min(0.85, Math.min(boxW, boxD) * 0.35)
+  const connectorH = Math.min(0.22, baseHeight * 0.35)
+  const connectorT = gap > 0 ? gap * 0.85 : BASE_SEAM_GAP_FT * 0.85
+
+  const addConnectorsAlongSeam = (
+    midX: number,
+    midZ: number,
+    alongX: boolean,
+  ) => {
+    const span = alongX ? boxW : boxD
+    const offsets = [-span * 0.22, span * 0.22]
+    for (const offset of offsets) {
+      const sleeve = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          alongX ? connectorLen : connectorT * 1.6,
+          connectorH,
+          alongX ? connectorT * 1.6 : connectorLen,
+        ),
+        metal,
+      )
+      sleeve.name = 'module-connector'
+      sleeve.position.set(
+        midX + (alongX ? offset : 0),
+        baseHeight * 0.55,
+        midZ + (alongX ? 0 : offset),
+      )
+      group.add(sleeve)
+
+      const tongue = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          alongX ? connectorLen * 0.7 : connectorT * 0.55,
+          connectorH * 0.55,
+          alongX ? connectorT * 0.55 : connectorLen * 0.7,
+        ),
+        metal,
+      )
+      tongue.name = 'module-connector'
+      tongue.position.set(
+        midX + (alongX ? offset : 0.02),
+        baseHeight * 0.55,
+        midZ + (alongX ? 0.02 : offset),
+      )
+      group.add(tongue)
+    }
+  }
+
+  for (let ix = 0; ix < cellsX - 1; ix++) {
+    for (let iz = 0; iz < cellsZ; iz++) {
+      const midX = originX + (ix + 1) * boxW + ix * gap + gap / 2
+      const midZ = originZ + iz * (boxD + gap) + boxD / 2
+      addConnectorsAlongSeam(midX, midZ, false)
+    }
+  }
+  for (let iz = 0; iz < cellsZ - 1; iz++) {
+    for (let ix = 0; ix < cellsX; ix++) {
+      const midX = originX + ix * (boxW + gap) + boxW / 2
+      const midZ = originZ + (iz + 1) * boxD + iz * gap + gap / 2
+      addConnectorsAlongSeam(midX, midZ, true)
+    }
+  }
+
+  return group
+}
+
+/**
+ * Compose tiled 4×4 plywood bases (with slider connectors) + steel frame on top.
  */
 function composeModule(
   template: THREE.Object3D,
@@ -178,15 +296,16 @@ function composeModule(
   const [w, steelH, d] = steelSize
   const group = new THREE.Group()
 
-  const base = new THREE.Mesh(
-    new THREE.BoxGeometry(w, baseHeight, d),
-    createPlywoodMaterial(),
-  )
-  base.name = 'module-base'
-  base.position.y = baseHeight / 2
-  group.add(base)
+  group.add(createTiledPlywoodBase(w, d, baseHeight))
 
-  const steel = fitObjectToSize(extractSteelTemplate(template), [w, steelH, d])
+  const inset = STEEL_EDGE_INSET_FT
+  const steelW = Math.max(w - 2 * inset, 1)
+  const steelD = Math.max(d - 2 * inset, 1)
+  const steel = fitObjectToSize(extractSteelTemplate(template), [
+    steelW,
+    steelH,
+    steelD,
+  ])
   steel.name = 'module-steel-root'
   steel.position.y = baseHeight
   steel.traverse((child) => {
@@ -232,7 +351,7 @@ export function createViewport(container: HTMLElement): ViewportApi {
   const height = Math.max(container.clientHeight, 1)
 
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color('#FAFAFA')
+  scene.background = new THREE.Color('#F5F5F7')
 
   const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 200)
   camera.position.set(18, 12, 18)
@@ -296,6 +415,21 @@ export function createViewport(container: HTMLElement): ViewportApi {
   )
   previewMesh.visible = false
   scene.add(previewMesh)
+
+  // Clone of the exact wall-bench ghost material (same color + opacity)
+  const cornerPreviewMat = (
+    previewMesh.material as THREE.MeshStandardMaterial
+  ).clone()
+  // Anti-clip only — do not change color / opacity
+  cornerPreviewMat.depthWrite = false
+  cornerPreviewMat.polygonOffset = true
+  cornerPreviewMat.polygonOffsetFactor = -2
+  cornerPreviewMat.polygonOffsetUnits = -2
+  const previewCorner = createCornerBenchPreviewMesh(cornerPreviewMat)
+  const cornerPreviewMesh = previewCorner.userData.previewMesh as THREE.Mesh
+  cornerPreviewMesh.renderOrder = 3
+  previewCorner.visible = false
+  scene.add(previewCorner)
 
   const raycaster = new THREE.Raycaster()
   const pointer = new THREE.Vector2()
@@ -442,7 +576,12 @@ export function createViewport(container: HTMLElement): ViewportApi {
         .getState()
         .primitives.find((p) => p.id === primitive.hostId)
       if (host) {
-        const pose = computeWallAttachment(host, primitive.face, primitive.typeId)
+        const pose = computeWallAttachment(
+          host,
+          primitive.face,
+          primitive.typeId,
+          { along: primitive.attachAlong },
+        )
         if (pose) {
           let group: THREE.Object3D
 
@@ -474,6 +613,32 @@ export function createViewport(container: HTMLElement): ViewportApi {
           setSelectionHighlight(group, selected)
           return group
         }
+      }
+    }
+
+    if (primitive.hostId && primitive.corner != null && primitive.cellIx != null && primitive.cellIz != null) {
+      const host = useDesignStore
+        .getState()
+        .primitives.find((p) => p.id === primitive.hostId)
+      if (host) {
+        const pose = computeCornerAttachment(
+          host,
+          primitive.cellIx,
+          primitive.cellIz,
+          primitive.corner,
+        )
+        const group = createAccessoryMesh(primitive.typeId)
+        group.position.set(pose.center.x, pose.center.y, pose.center.z)
+        group.rotation.y = pose.rotationY
+        if (pose.scale) {
+          group.scale.set(pose.scale[0], pose.scale[1], pose.scale[2])
+        }
+        group.userData.primitiveId = primitive.id
+        group.traverse((child) => {
+          child.userData.primitiveId = primitive.id
+        })
+        setSelectionHighlight(group, selected)
+        return group
       }
     }
 
@@ -536,7 +701,7 @@ export function createViewport(container: HTMLElement): ViewportApi {
       const selected = state.selectedPrimitiveId === primitive.id
       const kind = getPlacementKind(primitive.typeId)
 
-      if (kind === 'wallAttach' || kind === 'free') {
+      if (kind === 'wallAttach' || kind === 'free' || kind === 'cornerAttach') {
         const object = createAccessoryPrimitive(primitive, selected)
         primitivesGroup.add(object)
         primitiveObjects.set(primitive.id, object)
@@ -574,12 +739,14 @@ export function createViewport(container: HTMLElement): ViewportApi {
   const updatePreview = (state: StoreState) => {
     if (state.activeTool !== 'place' || !state.activePrimitiveType) {
       previewMesh.visible = false
+      previewCorner.visible = false
       return
     }
 
     const kind = getPlacementKind(state.activePrimitiveType)
 
     if (kind === 'wallAttach') {
+      previewCorner.visible = false
       const attach = state.hoverAttachment
       if (!attach || !state.placementValid) {
         previewMesh.visible = false
@@ -588,7 +755,9 @@ export function createViewport(container: HTMLElement): ViewportApi {
       // Local mesh axes (length/width on X, thickness/depth on Z) + rotationY —
       // same as placed accessories. Do not use world AABB size here.
       const isBench = state.activePrimitiveType === 'bench'
-      const localW = attach.wallWidth - PANEL_EDGE_CLEARANCE_FT
+      const localW = isBench
+        ? benchLengthForWall(attach.wallWidth)
+        : attach.wallWidth - 2 * STEEL_EDGE_INSET_FT - PANEL_EDGE_CLEARANCE_FT
       const localH = isBench
         ? BENCH_SEAT_HEIGHT_FT
         : STEEL_HEIGHT_FT - PANEL_EDGE_CLEARANCE_FT
@@ -599,10 +768,39 @@ export function createViewport(container: HTMLElement): ViewportApi {
       const y = isBench ? attach.center.y + localH / 2 : attach.center.y
       previewMesh.position.set(attach.center.x, y, attach.center.z)
       previewMesh.rotation.y = attach.rotationY
+      previewMesh.scale.set(1, 1, 1)
       ;(previewMesh.material as THREE.MeshStandardMaterial).color.set(0x0071e3)
       previewMesh.visible = true
       return
     }
+
+    if (kind === 'cornerAttach') {
+      previewMesh.visible = false
+      const attach = state.hoverAttachment
+      if (!attach || !state.placementValid) {
+        previewCorner.visible = false
+        return
+      }
+      previewCorner.position.set(
+        attach.center.x,
+        attach.center.y + 0.02,
+        attach.center.z,
+      )
+      previewCorner.rotation.y = attach.rotationY
+      const sx = attach.scale?.[0] ?? 1
+      const sy = attach.scale?.[1] ?? 1
+      const sz = attach.scale?.[2] ?? 1
+      previewCorner.scale.set(sx, sy, sz)
+      // Negative scale flips winding — use BackSide so we don’t need DoubleSide
+      // (DoubleSide makes transparent meshes look twice as opaque / darker).
+      const cornerMesh = previewCorner.userData.previewMesh as THREE.Mesh
+      const mat = cornerMesh.material as THREE.MeshStandardMaterial
+      mat.side = sx * sy * sz < 0 ? THREE.BackSide : THREE.FrontSide
+      previewCorner.visible = true
+      return
+    }
+
+    previewCorner.visible = false
 
     if (!state.hoverGrid) {
       previewMesh.visible = false
@@ -621,6 +819,7 @@ export function createViewport(container: HTMLElement): ViewportApi {
     previewMesh.geometry = new THREE.BoxGeometry(w, h, d)
     previewMesh.position.set(pos.x, pos.y, pos.z)
     previewMesh.rotation.y = 0
+    previewMesh.scale.set(1, 1, 1)
     ;(previewMesh.material as THREE.MeshStandardMaterial).color.set(
       state.placementValid ? 0x0071e3 : 0xff3b30,
     )
@@ -687,6 +886,14 @@ export function createViewport(container: HTMLElement): ViewportApi {
           },
         )
         stickyWallFace = attachment?.face ?? null
+      } else if (kind === 'cornerAttach') {
+        stickyWallFace = null
+        attachment = findCornerAttachmentNear(
+          gridPos.worldX,
+          gridPos.worldZ,
+          state.activePrimitiveType,
+          state.primitives,
+        )
       } else {
         stickyWallFace = null
       }
@@ -820,6 +1027,7 @@ export function createViewport(container: HTMLElement): ViewportApi {
       ;(boundingFloor.material as THREE.Material).dispose()
       previewMesh.geometry.dispose()
       ;(previewMesh.material as THREE.Material).dispose()
+      disposeObject(previewCorner)
       gridHelper.geometry.dispose()
       const gridMaterials = Array.isArray(gridHelper.material)
         ? gridHelper.material

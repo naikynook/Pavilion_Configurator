@@ -7,21 +7,31 @@ import type {
 import {
   PANEL_EDGE_CLEARANCE_FT,
   PANEL_THICKNESS_FT,
+  STEEL_EDGE_INSET_FT,
   STEEL_HEIGHT_FT,
   getPrimitiveDefinition,
   isModuleType,
 } from '../constants/primitives'
 import {
+  BENCH_BAY_FT,
   BENCH_DEPTH_FT,
   BENCH_SEAT_HEIGHT_FT,
+  benchBackSetbackFt,
+  benchLengthForWall,
+  benchSlotsAlong,
 } from '../three/createFurniture'
 
 const FACE_ORDER: WallFace[] = ['south', 'east', 'north', 'west']
 
-/** Clearance from steel tube face so the bench sits in front (bolt-on), not through it */
-export const BENCH_STEEL_SETBACK_FT = 0.35
+/** @deprecated use benchBackSetbackFt() — kept for call sites */
+export const BENCH_STEEL_SETBACK_FT = STEEL_EDGE_INSET_FT + 0.2
 
-export { BENCH_DEPTH_FT, BENCH_SEAT_HEIGHT_FT }
+export {
+  BENCH_BAY_FT,
+  BENCH_DEPTH_FT,
+  BENCH_SEAT_HEIGHT_FT,
+  benchLengthForWall,
+}
 export const BENCH_TOTAL_HEIGHT_FT = BENCH_SEAT_HEIGHT_FT
 
 /** How far past a wall the pointer can be and still snap (ft). */
@@ -49,7 +59,7 @@ function isPanelType(typeId: PrimitiveTypeId) {
 
 /**
  * Only block another item of the same role on that face.
- * Benches and panels may share a wall (panel outside, bench inside).
+ * Panels: one per face. Benches: checked separately by 4 ft bay slots.
  */
 function faceAlreadyOccupied(
   primitives: PlacedPrimitive[],
@@ -58,12 +68,67 @@ function faceAlreadyOccupied(
   typeId: PrimitiveTypeId,
   excludeId?: string,
 ) {
+  if (typeId === 'bench') return false
   return primitives.some((p) => {
     if (p.id === excludeId || p.hostId !== hostId || p.face !== face) return false
-    if (typeId === 'bench') return p.typeId === 'bench'
     if (isPanelType(typeId)) return isPanelType(p.typeId)
     return p.typeId === typeId
   })
+}
+
+function benchSlotTaken(
+  primitives: PlacedPrimitive[],
+  hostId: string,
+  face: WallFace,
+  slotAlong: number,
+  excludeId?: string,
+) {
+  return primitives.some((p) => {
+    if (
+      p.id === excludeId ||
+      p.typeId !== 'bench' ||
+      p.hostId !== hostId ||
+      p.face !== face ||
+      p.attachAlong == null
+    ) {
+      return false
+    }
+    return Math.abs(p.attachAlong - slotAlong) < 0.05
+  })
+}
+
+function pickBenchSlot(
+  wallWidth: number,
+  preferredAlong: number,
+  primitives: PlacedPrimitive[],
+  hostId: string,
+  face: WallFace,
+  excludeId?: string,
+): number | null {
+  const slots = benchSlotsAlong(wallWidth)
+  if (slots.length === 0) return null
+
+  const ranked = [...slots].sort(
+    (a, b) => Math.abs(a - preferredAlong) - Math.abs(b - preferredAlong),
+  )
+  for (const slot of ranked) {
+    if (!benchSlotTaken(primitives, hostId, face, slot, excludeId)) {
+      return slot
+    }
+  }
+  return null
+}
+
+function cursorAlongWall(
+  worldX: number,
+  worldZ: number,
+  host: PlacedPrimitive,
+  face: WallFace,
+) {
+  const hx = host.gridX
+  const hz = host.gridZ
+  if (face === 'north' || face === 'south') return worldX - hx
+  return worldZ - hz
 }
 
 /** Nearest wall from a point inside the module (normalized distances). */
@@ -103,6 +168,16 @@ function nearestFaceInside(
   return best
 }
 
+export interface WallAttachPoseOptions {
+  /** World cursor / ray hit used to choose a 4 ft bay along the wall */
+  cursor?: { x: number; z: number } | null
+  /** Explicit along-wall center (ft from face min edge) — used when rebuilding */
+  along?: number | null
+  /** Needed to pick a free bay when placing from a cursor */
+  primitives?: PlacedPrimitive[]
+  excludeId?: string
+}
+
 /**
  * World pose for a wall-attached item on a host module face.
  * Panels sit on the outer face; benches sit inside, set back from the steel.
@@ -111,6 +186,7 @@ export function computeWallAttachment(
   host: PlacedPrimitive,
   face: WallFace,
   typeId: PrimitiveTypeId,
+  options: WallAttachPoseOptions = {},
 ): WallAttachmentTarget | null {
   const def = getPrimitiveDefinition(typeId)
   if (!def || def.kind !== 'wallAttach') return null
@@ -126,10 +202,30 @@ export function computeWallAttachment(
   const [hw, , hd] = host.size
 
   if (typeId === 'bench') {
+    if (wallWidth + 1e-6 < BENCH_BAY_FT) return null
+
     const depth = BENCH_DEPTH_FT
     const height = BENCH_TOTAL_HEIGHT_FT
-    const length = wallWidth - PANEL_EDGE_CLEARANCE_FT
-    const setback = BENCH_STEEL_SETBACK_FT
+    const length = benchLengthForWall(wallWidth)
+    const setback = benchBackSetbackFt()
+    const primitives = options.primitives ?? []
+
+    let along = options.along ?? null
+    if (along == null) {
+      const preferred = options.cursor
+        ? cursorAlongWall(options.cursor.x, options.cursor.z, host, face)
+        : wallWidth / 2
+      along = pickBenchSlot(
+        wallWidth,
+        preferred,
+        primitives,
+        host.id,
+        face,
+        options.excludeId,
+      )
+    }
+    if (along == null) return null
+
     let centerX = hx + hw / 2
     let centerZ = hz + hd / 2
     let rotationY = 0
@@ -137,22 +233,26 @@ export function computeWallAttachment(
 
     switch (face) {
       case 'south':
+        centerX = hx + along
         centerZ = hz + setback + depth / 2
         rotationY = 0
         size = [length, height, depth]
         break
       case 'north':
+        centerX = hx + along
         centerZ = hz + hd - setback - depth / 2
         rotationY = Math.PI
         size = [length, height, depth]
         break
       case 'west':
         centerX = hx + setback + depth / 2
+        centerZ = hz + along
         rotationY = Math.PI / 2
         size = [depth, height, length]
         break
       case 'east':
         centerX = hx + hw - setback - depth / 2
+        centerZ = hz + along
         rotationY = -Math.PI / 2
         size = [depth, height, length]
         break
@@ -165,13 +265,16 @@ export function computeWallAttachment(
       rotationY,
       size,
       wallWidth,
+      attachAlong: along,
     }
   }
 
-  // Wall panels: outer face of the steel bay
-  const panelW = wallWidth - PANEL_EDGE_CLEARANCE_FT
+  // Wall panels: outer face of the inset steel bay
+  const panelW =
+    wallWidth - 2 * STEEL_EDGE_INSET_FT - PANEL_EDGE_CLEARANCE_FT
   const panelH = STEEL_HEIGHT_FT - PANEL_EDGE_CLEARANCE_FT
   const t = PANEL_THICKNESS_FT
+  const inset = STEEL_EDGE_INSET_FT
   let centerX = hx + hw / 2
   let centerZ = hz + hd / 2
   let rotationY = 0
@@ -179,22 +282,22 @@ export function computeWallAttachment(
 
   switch (face) {
     case 'south':
-      centerZ = hz - t / 2
+      centerZ = hz + inset - t / 2
       rotationY = 0
       size = [panelW, panelH, t]
       break
     case 'north':
-      centerZ = hz + hd + t / 2
+      centerZ = hz + hd - inset + t / 2
       rotationY = Math.PI
       size = [panelW, panelH, t]
       break
     case 'west':
-      centerX = hx - t / 2
+      centerX = hx + inset - t / 2
       rotationY = Math.PI / 2
       size = [t, panelH, panelW]
       break
     case 'east':
-      centerX = hx + hw + t / 2
+      centerX = hx + hw - inset + t / 2
       rotationY = -Math.PI / 2
       size = [t, panelH, panelW]
       break
@@ -279,19 +382,19 @@ function rayHitWallFace(
   let nz = 0
   switch (face) {
     case 'south':
-      planeZ = hz
+      planeZ = hz + STEEL_EDGE_INSET_FT
       nz = -1
       break
     case 'north':
-      planeZ = hz + hd
+      planeZ = hz + hd - STEEL_EDGE_INSET_FT
       nz = 1
       break
     case 'west':
-      planeX = hx
+      planeX = hx + STEEL_EDGE_INSET_FT
       nx = -1
       break
     case 'east':
-      planeX = hx + hw
+      planeX = hx + hw - STEEL_EDGE_INSET_FT
       nx = 1
       break
   }
@@ -363,7 +466,11 @@ export function findWallAttachmentNear(
         }
         const hit = rayHitWallFace(ray.origin, ray.direction, host, face)
         if (!hit) continue
-        const target = computeWallAttachment(host, face, typeId)
+        const target = computeWallAttachment(host, face, typeId, {
+          cursor: { x: hit.x, z: hit.z },
+          primitives,
+          excludeId,
+        })
         if (!target) continue
         if (!bestRay || hit.t < bestRay.t) {
           bestRay = { target, t: hit.t }
@@ -417,10 +524,13 @@ export function findWallAttachmentNear(
     ]
 
     for (const face of ordered) {
-      if (faceAlreadyOccupied(primitives, host.id, face, typeId, excludeId)) {
-        continue
-      }
-      return computeWallAttachment(host, face, typeId)
+      const target = computeWallAttachment(host, face, typeId, {
+        cursor: { x: clampedX, z: clampedZ },
+        primitives,
+        excludeId,
+      })
+      if (!target) continue
+      return target
     }
 
     return null

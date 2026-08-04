@@ -120,7 +120,7 @@ export function applyModuleMaterials(object: THREE.Object3D) {
     const byName =
       child.name === 'module-base'
         ? 'base'
-        : child.name === 'module-steel'
+        : child.name === 'module-connector' || child.name === 'module-steel'
           ? 'steel'
           : null
 
@@ -130,6 +130,9 @@ export function applyModuleMaterials(object: THREE.Object3D) {
       (byName == null &&
         (child.name === 'mesh_8' || meshBox.max.y <= baseTop + fullHeight * 0.01))
 
-    child.material = isBase ? createPlywoodMaterial() : createMetalMaterial()
+    child.material =
+      byName === 'steel' || (!isBase && byName == null)
+        ? createMetalMaterial()
+        : createPlywoodMaterial()
   })
 }
