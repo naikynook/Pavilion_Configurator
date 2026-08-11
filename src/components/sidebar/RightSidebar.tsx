@@ -402,11 +402,6 @@ export function RightSidebar() {
             <DownloadIcon />
             <span>Instruction file</span>
           </a>
-          <button type="button" className="action-item" disabled>
-            <DownloadIcon />
-            <span>Cut list & dimensions</span>
-            <span className="action-item__badge">Soon</span>
-          </button>
         </div>
       </section>
 
