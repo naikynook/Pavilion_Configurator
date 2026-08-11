@@ -8,7 +8,7 @@ Full instruction files with dimensions are also available via the right menu bar
 
 ![Pavilion render 2](docs/readme/render-2.png)
 
-My work directly builds upon two precedents: StockaStudio and my advisor, Adam Vosburgh's, Kallax Configurator. Both deal with modular furniture, but diverge in many other ways. Stock A Studio uses perforated square tubing, along with other industrial hardware, to create furniture that promises endless combinations. Their installations are bespoke and dramatically change depending on the event type. Adam's Kallax Configurator encourages users to experiment with their own version of Ikea's Kallax shelving units, while streamlining the DIY process by including many of the same materials I have incorporated into my own project.
+My work directly builds upon two precedents: Stock-a-Studio and my advisor, Adam Vosburgh's, Kallax Configurator. Both deal with modular furniture, but diverge in many other ways. Stock-a-Studio uses perforated square tubing, along with other industrial hardware, to create furniture that promises endless combinations. Their installations are bespoke and dramatically change depending on the event type. Adam's Kallax Configurator encourages users to experiment with their own version of Ikea's Kallax shelving units, while streamlining the DIY process by including many of the same materials I have incorporated into my own project.
 
 ![StockaStudio installation](docs/readme/stocka-studio.jpg)
 
