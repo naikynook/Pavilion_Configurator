@@ -49,7 +49,7 @@ export function LeftSidebar() {
   const panelColorValue = selectedIsPanel
     ? selected?.color ?? null
     : activePanelColor
-  const pickerColor = panelColorValue ?? '#d4c4a8'
+  const pickerColor = panelColorValue ?? '#F4A8C4'
 
   const applyPanelColor = (color: string | null) => {
     if (editingPanelColor && selectedPrimitiveId) {
