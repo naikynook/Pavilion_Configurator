@@ -32,11 +32,11 @@ A minimalist, Apple-inspired design system. Clean, calm, and focused — the int
 
 | Token              | Value     | Usage                              |
 |--------------------|-----------|------------------------------------|
-| `--accent`         | `#0071E3` | Primary actions, links, selection  |
-| `--accent-hover`   | `#0077ED` | Hover on primary actions           |
-| `--accent-subtle`  | `#E8F2FF` | Selected item backgrounds          |
+| `--accent`         | `#B84FD9` | Primary actions, links, selection  |
+| `--accent-hover`   | `#C96BEB` | Hover on primary actions           |
+| `--accent-subtle`  | `#F6E8FC` | Selected item backgrounds          |
 | `--border`         | `#D2D2D7` | Dividers, input borders            |
-| `--border-focus`   | `#0071E3` | Focus rings                        |
+| `--border-focus`   | `#B84FD9` | Focus rings                        |
 
 ### Semantic
 

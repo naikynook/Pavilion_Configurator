@@ -7,12 +7,18 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "optimize:model": "node scripts/optimize-4x4.mjs 4x4",
-    "optimize:model:4x8": "node scripts/optimize-4x4.mjs 4x8",
-    "optimize:model:8x8": "node scripts/optimize-4x4.mjs 8x8",
-    "optimize:models": "node scripts/optimize-4x4.mjs 4x4 && node scripts/optimize-4x4.mjs 4x8 && node scripts/optimize-4x4.mjs 8x8"
+    "optimize:model": "node asset-pipeline/optimize-4x4.mjs 4x4",
+    "optimize:model:4x8": "node asset-pipeline/optimize-4x4.mjs 4x8",
+    "optimize:model:8x8": "node asset-pipeline/optimize-4x4.mjs 8x8",
+    "optimize:models": "node asset-pipeline/optimize-4x4.mjs 4x4 && node asset-pipeline/optimize-4x4.mjs 4x8 && node asset-pipeline/optimize-4x4.mjs 8x8",
+    "optimize:stool": "node asset-pipeline/optimize-stool.mjs"
   },
   "dependencies": {
+    "@gltf-transform/core": "^4.4.2",
+    "@gltf-transform/extensions": "^4.4.2",
+    "@gltf-transform/functions": "^4.4.2",
+    "draco3dgltf": "^1.5.7",
+    "meshoptimizer": "^1.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.169.0",

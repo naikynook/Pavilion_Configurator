@@ -4,21 +4,19 @@ export type PrimitiveTypeId =
   | 'block'
   | 'block4x8'
   | 'block8'
-  | 'panel4x8'
   | 'panel8x8'
-  | 'bench'
-  | 'benchCorner'
-  | 'podium'
+  | 'stool'
 
 /** How the item is placed in the scene */
 export type PlacementKind =
   | 'module'
   | 'wallAttach'
-  | 'cornerAttach'
+  | 'baseAttach'
   | 'free'
 
-/** Wall face of a host module (north = +Z) */
-export type WallFace = 'north' | 'south' | 'east' | 'west'
+/** Wall / roof face of a host module (north = +Z, top = roof) */
+export type WallFace = 'north' | 'south' | 'east' | 'west' | 'top'
+
 
 /** Outer corner of a host module footprint */
 export type ModuleCorner = 'sw' | 'se' | 'nw' | 'ne'
@@ -41,8 +39,7 @@ export interface PrimitiveDefinition {
   /** Optional GLB model path (served from /public) */
   modelUrl?: string
   /**
-   * For wall panels / benches: required host wall width in feet (4 or 8).
-   * Bench omits this and fits whichever wall is selected.
+   * For wall panels: required host wall width in feet (4 or 8).
    */
   requiredWallWidth?: 4 | 8
 }
@@ -58,19 +55,23 @@ export interface PlacedPrimitive {
   baseHeight?: BaseHeightFt
   /** Y-rotation in radians */
   rotationY?: number
-  /** Host module for wall-attached panels / benches / corner benches */
+  /** Host module for wall panels / stools */
   hostId?: string
   face?: WallFace
-  /** For corner benches: which corner of the 4×4 base cell */
+  /** For stools: which quadrant of the 4×4 base cell */
   corner?: ModuleCorner
-  /** For corner benches: 4×4 cell index on the host module */
+  /** For stools: 4×4 cell index on the host module */
   cellIx?: number
   cellIz?: number
   /**
-   * For benches: distance along the wall from the face’s min edge to the
-   * bench center (feet). Lets multiple 4 ft benches share an 8 ft wall.
+   * Reserved (legacy bench along-wall offset). Unused for stools/panels.
    */
   attachAlong?: number
+  /**
+   * Wall panel paint. Hex string (e.g. `#c45c26`) for a solid color;
+   * omit / undefined for natural plywood texture.
+   */
+  color?: string
 }
 
 export interface BoundingBox {
@@ -89,21 +90,23 @@ export interface MaterialSummary {
 
 export interface WallAttachmentTarget {
   hostId: string
-  /** Wall face for panels/benches */
+  /** Wall face for panels */
   face?: WallFace
-  /** Corner for L-shaped corner benches */
+  /** Quadrant for stools on a 4×4 base cell */
   corner?: ModuleCorner
-  /** 4×4 base cell on the host for corner benches */
+  /** 4×4 base cell on the host for stools */
   cellIx?: number
   cellIz?: number
-  /** World-space center of the attachment */
+  /** World-space origin of the attachment (panel/stool local origin) */
   center: { x: number; y: number; z: number }
   rotationY: number
-  /** Optional non-uniform scale (used to mirror corner benches) */
+  /** Extra tilt (e.g. −90° so a wall panel lies flat on the roof) */
+  rotationX?: number
+  /** Optional non-uniform scale */
   scale?: [number, number, number]
   /** Size of the placed item at this attachment */
   size: [number, number, number]
   wallWidth: number
-  /** Bench: along-wall center offset from face min edge (ft) */
+  /** Legacy bench along-wall offset */
   attachAlong?: number
 }

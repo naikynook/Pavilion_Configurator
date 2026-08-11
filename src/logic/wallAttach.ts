@@ -5,42 +5,30 @@ import type {
   WallFace,
 } from '../types'
 import {
-  PANEL_EDGE_CLEARANCE_FT,
-  PANEL_THICKNESS_FT,
+  PANEL_BASE_LIFT_FT,
   STEEL_EDGE_INSET_FT,
+  STEEL_FOOT_LIFT_FT,
   STEEL_HEIGHT_FT,
+  getPanelDisplaySize,
   getPrimitiveDefinition,
   isModuleType,
+  steelOuterFaceOffsetFt,
 } from '../constants/primitives'
-import {
-  BENCH_BAY_FT,
-  BENCH_DEPTH_FT,
-  BENCH_SEAT_HEIGHT_FT,
-  benchBackSetbackFt,
-  benchLengthForWall,
-  benchSlotsAlong,
-} from '../three/createFurniture'
 
-const FACE_ORDER: WallFace[] = ['south', 'east', 'north', 'west']
-
-/** @deprecated use benchBackSetbackFt() — kept for call sites */
-export const BENCH_STEEL_SETBACK_FT = STEEL_EDGE_INSET_FT + 0.2
-
-export {
-  BENCH_BAY_FT,
-  BENCH_DEPTH_FT,
-  BENCH_SEAT_HEIGHT_FT,
-  benchLengthForWall,
-}
-export const BENCH_TOTAL_HEIGHT_FT = BENCH_SEAT_HEIGHT_FT
+/** Vertical wall faces (side panels). */
+type SideFace = 'north' | 'south' | 'east' | 'west'
+const FACE_ORDER: SideFace[] = ['south', 'east', 'north', 'west']
+/** Panels can also snap to the roof. */
+const PANEL_FACE_ORDER: WallFace[] = [...FACE_ORDER, 'top']
 
 /** How far past a wall the pointer can be and still snap (ft). */
 const PANEL_SNAP_FT = 4.5
-const BENCH_CAPTURE_MARGIN_FT = 1.75
-/** Keep current wall until another is this much closer (normalized 0–1). */
-const FACE_STICKY_RATIO = 1.2
 
 function wallWidthForFace(host: PlacedPrimitive, face: WallFace) {
+  if (face === 'top') {
+    // Roof uses the same 8×8 panel sizing as a full-width wall
+    return Math.min(host.size[0], host.size[2])
+  }
   return face === 'north' || face === 'south' ? host.size[0] : host.size[2]
 }
 
@@ -54,12 +42,12 @@ function pointInsideHost(worldX: number, worldZ: number, host: PlacedPrimitive) 
 }
 
 function isPanelType(typeId: PrimitiveTypeId) {
-  return typeId === 'panel4x8' || typeId === 'panel8x8'
+  return typeId === 'panel8x8'
 }
 
 /**
  * Only block another item of the same role on that face.
- * Panels: one per face. Benches: checked separately by 4 ft bay slots.
+ * Panels: one per face.
  */
 function faceAlreadyOccupied(
   primitives: PlacedPrimitive[],
@@ -68,7 +56,6 @@ function faceAlreadyOccupied(
   typeId: PrimitiveTypeId,
   excludeId?: string,
 ) {
-  if (typeId === 'bench') return false
   return primitives.some((p) => {
     if (p.id === excludeId || p.hostId !== hostId || p.face !== face) return false
     if (isPanelType(typeId)) return isPanelType(p.typeId)
@@ -76,97 +63,7 @@ function faceAlreadyOccupied(
   })
 }
 
-function benchSlotTaken(
-  primitives: PlacedPrimitive[],
-  hostId: string,
-  face: WallFace,
-  slotAlong: number,
-  excludeId?: string,
-) {
-  return primitives.some((p) => {
-    if (
-      p.id === excludeId ||
-      p.typeId !== 'bench' ||
-      p.hostId !== hostId ||
-      p.face !== face ||
-      p.attachAlong == null
-    ) {
-      return false
-    }
-    return Math.abs(p.attachAlong - slotAlong) < 0.05
-  })
-}
 
-function pickBenchSlot(
-  wallWidth: number,
-  preferredAlong: number,
-  primitives: PlacedPrimitive[],
-  hostId: string,
-  face: WallFace,
-  excludeId?: string,
-): number | null {
-  const slots = benchSlotsAlong(wallWidth)
-  if (slots.length === 0) return null
-
-  const ranked = [...slots].sort(
-    (a, b) => Math.abs(a - preferredAlong) - Math.abs(b - preferredAlong),
-  )
-  for (const slot of ranked) {
-    if (!benchSlotTaken(primitives, hostId, face, slot, excludeId)) {
-      return slot
-    }
-  }
-  return null
-}
-
-function cursorAlongWall(
-  worldX: number,
-  worldZ: number,
-  host: PlacedPrimitive,
-  face: WallFace,
-) {
-  const hx = host.gridX
-  const hz = host.gridZ
-  if (face === 'north' || face === 'south') return worldX - hx
-  return worldZ - hz
-}
-
-/** Nearest wall from a point inside the module (normalized distances). */
-function faceDistancesInside(
-  worldX: number,
-  worldZ: number,
-  host: PlacedPrimitive,
-): Record<WallFace, number> {
-  const nx = (worldX - host.gridX) / Math.max(host.size[0], 1e-6)
-  const nz = (worldZ - host.gridZ) / Math.max(host.size[2], 1e-6)
-  return {
-    south: nz,
-    north: 1 - nz,
-    west: nx,
-    east: 1 - nx,
-  }
-}
-
-function nearestFaceInside(
-  worldX: number,
-  worldZ: number,
-  host: PlacedPrimitive,
-  stickyFace?: WallFace | null,
-): WallFace {
-  const dists = faceDistancesInside(worldX, worldZ, host)
-  let best: WallFace = 'south'
-  let bestDist = Infinity
-  for (const face of FACE_ORDER) {
-    if (dists[face] < bestDist) {
-      bestDist = dists[face]
-      best = face
-    }
-  }
-  if (stickyFace && dists[stickyFace] <= bestDist * FACE_STICKY_RATIO) {
-    return stickyFace
-  }
-  return best
-}
 
 export interface WallAttachPoseOptions {
   /** World cursor / ray hit used to choose a 4 ft bay along the wall */
@@ -180,101 +77,65 @@ export interface WallAttachPoseOptions {
 
 /**
  * World pose for a wall-attached item on a host module face.
- * Panels sit on the outer face; benches sit inside, set back from the steel.
- */
+ * Side panels sit on the outer face; roof panels lie flat on top of the frame;
+ *  */
 export function computeWallAttachment(
   host: PlacedPrimitive,
   face: WallFace,
   typeId: PrimitiveTypeId,
-  options: WallAttachPoseOptions = {},
+  _options: WallAttachPoseOptions = {},
 ): WallAttachmentTarget | null {
   const def = getPrimitiveDefinition(typeId)
   if (!def || def.kind !== 'wallAttach') return null
-
-  const wallWidth = wallWidthForFace(host, face)
-  if (def.requiredWallWidth != null && def.requiredWallWidth !== wallWidth) {
-    return null
-  }
 
   const baseY = host.baseHeight ?? 1
   const hx = host.gridX
   const hz = host.gridZ
   const [hw, , hd] = host.size
 
-  if (typeId === 'bench') {
-    if (wallWidth + 1e-6 < BENCH_BAY_FT) return null
-
-    const depth = BENCH_DEPTH_FT
-    const height = BENCH_TOTAL_HEIGHT_FT
-    const length = benchLengthForWall(wallWidth)
-    const setback = benchBackSetbackFt()
-    const primitives = options.primitives ?? []
-
-    let along = options.along ?? null
-    if (along == null) {
-      const preferred = options.cursor
-        ? cursorAlongWall(options.cursor.x, options.cursor.z, host, face)
-        : wallWidth / 2
-      along = pickBenchSlot(
-        wallWidth,
-        preferred,
-        primitives,
-        host.id,
-        face,
-        options.excludeId,
-      )
-    }
-    if (along == null) return null
-
-    let centerX = hx + hw / 2
-    let centerZ = hz + hd / 2
-    let rotationY = 0
-    let size: [number, number, number] = [length, height, depth]
-
-    switch (face) {
-      case 'south':
-        centerX = hx + along
-        centerZ = hz + setback + depth / 2
-        rotationY = 0
-        size = [length, height, depth]
-        break
-      case 'north':
-        centerX = hx + along
-        centerZ = hz + hd - setback - depth / 2
-        rotationY = Math.PI
-        size = [length, height, depth]
-        break
-      case 'west':
-        centerX = hx + setback + depth / 2
-        centerZ = hz + along
-        rotationY = Math.PI / 2
-        size = [depth, height, length]
-        break
-      case 'east':
-        centerX = hx + hw - setback - depth / 2
-        centerZ = hz + along
-        rotationY = -Math.PI / 2
-        size = [depth, height, length]
-        break
+  // —— Roof panel (flat on top of the steel) ——
+  if (face === 'top') {
+    if (typeId !== 'panel8x8') return null
+    // 8×8 panel needs a full 8×8 bay
+    if (hw + 1e-6 < 8 || hd + 1e-6 < 8) return null
+    if (def.requiredWallWidth != null && def.requiredWallWidth !== 8) {
+      return null
     }
 
+    const wallWidth = 8
+    const [panelW, panelH, t] = getPanelDisplaySize(wallWidth)
+    const steelTop = baseY + STEEL_FOOT_LIFT_FT + STEEL_HEIGHT_FT
+    const cx = hx + hw / 2
+    const cz = hz + hd / 2
+
+    // Roof: lay flat on the steel, then spin 90° around vertical (left↔right).
+    // Viewport applies yaw on a parent group so it does not flip up/down.
     return {
       hostId: host.id,
-      face,
-      center: { x: centerX, y: baseY, z: centerZ },
-      rotationY,
-      size,
+      face: 'top',
+      center: {
+        x: cx,
+        y: steelTop,
+        z: cz,
+      },
+      rotationY: Math.PI / 2,
+      rotationX: -Math.PI / 2,
+      size: [panelH, t, panelW],
       wallWidth,
-      attachAlong: along,
     }
   }
 
-  // Wall panels: outer face of the inset steel bay
-  const panelW =
-    wallWidth - 2 * STEEL_EDGE_INSET_FT - PANEL_EDGE_CLEARANCE_FT
-  const panelH = STEEL_HEIGHT_FT - PANEL_EDGE_CLEARANCE_FT
-  const t = PANEL_THICKNESS_FT
+  const wallWidth = wallWidthForFace(host, face)
+  if (def.requiredWallWidth != null && def.requiredWallWidth !== wallWidth) {
+    return null
+  }
+
+  // Side wall panels: on the OUTSIDE of the frame — back flush to the tube’s
+  // outer face, thickness pointing out. (AABB includes foot plates outboard
+  // of the tube, so seat uses the measured outer-face offset.)
+  const [panelW, panelH, t] = getPanelDisplaySize(wallWidth)
   const inset = STEEL_EDGE_INSET_FT
+  const seat = steelOuterFaceOffsetFt(wallWidth)
   let centerX = hx + hw / 2
   let centerZ = hz + hd / 2
   let rotationY = 0
@@ -282,23 +143,24 @@ export function computeWallAttachment(
 
   switch (face) {
     case 'south':
-      centerZ = hz + inset - t / 2
-      rotationY = 0
-      size = [panelW, panelH, t]
-      break
-    case 'north':
-      centerZ = hz + hd - inset + t / 2
+      // Outer face of south posts; +Z out of bay
+      centerZ = hz + inset + seat
       rotationY = Math.PI
       size = [panelW, panelH, t]
       break
+    case 'north':
+      centerZ = hz + hd - inset - seat
+      rotationY = 0
+      size = [panelW, panelH, t]
+      break
     case 'west':
-      centerX = hx + inset - t / 2
-      rotationY = Math.PI / 2
+      centerX = hx + inset + seat
+      rotationY = -Math.PI / 2
       size = [t, panelH, panelW]
       break
     case 'east':
-      centerX = hx + hw - inset + t / 2
-      rotationY = -Math.PI / 2
+      centerX = hx + hw - inset - seat
+      rotationY = Math.PI / 2
       size = [t, panelH, panelW]
       break
   }
@@ -308,7 +170,8 @@ export function computeWallAttachment(
     face,
     center: {
       x: centerX,
-      y: baseY + PANEL_EDGE_CLEARANCE_FT / 2 + panelH / 2,
+      // Bottom of panel 1½″ above plywood lid (mesh is bottom-origin)
+      y: baseY + PANEL_BASE_LIFT_FT,
       z: centerZ,
     },
     rotationY,
@@ -335,6 +198,12 @@ function distToFacePlane(
       return hx - worldX
     case 'east':
       return worldX - (hx + hw)
+    case 'top':
+      // Horizontal roof — use distance from footprint center in XZ
+      return Math.hypot(
+        worldX - (hx + hw / 2),
+        worldZ - (hz + hd / 2),
+      )
   }
 }
 
@@ -348,6 +217,22 @@ function lateralOverhang(
   const hx = host.gridX
   const hz = host.gridZ
   const [hw, , hd] = host.size
+  if (face === 'top') {
+    if (pointInsideHost(worldX, worldZ, host)) return 0
+    const dx =
+      worldX < hx
+        ? hx - worldX
+        : worldX > hx + hw
+          ? worldX - (hx + hw)
+          : 0
+    const dz =
+      worldZ < hz
+        ? hz - worldZ
+        : worldZ > hz + hd
+          ? worldZ - (hz + hd)
+          : 0
+    return Math.hypot(dx, dz)
+  }
   if (face === 'north' || face === 'south') {
     if (worldX < hx) return hx - worldX
     if (worldX > hx + hw) return worldX - (hx + hw)
@@ -359,8 +244,8 @@ function lateralOverhang(
 }
 
 /**
- * Intersect a camera ray with a module wall plane and return the hit if it
- * lands on (or near) that wall rectangle.
+ * Intersect a camera ray with a module wall / roof plane and return the hit
+ * if it lands on (or near) that face rectangle.
  */
 function rayHitWallFace(
   origin: { x: number; y: number; z: number },
@@ -373,8 +258,30 @@ function rayHitWallFace(
   const hz = host.gridZ
   const [hw, , hd] = host.size
   const baseY = host.baseHeight ?? 1
+  const steelTopY = baseY + STEEL_FOOT_LIFT_FT + STEEL_HEIGHT_FT
   const yMin = baseY - 0.5
-  const yMax = baseY + STEEL_HEIGHT_FT + 1.5
+  // Keep side-wall hits below the roof so aiming at the top doesn’t
+  // register as a vertical face first.
+  const yMax = steelTopY - 0.6
+
+  if (face === 'top') {
+    if (Math.abs(direction.y) < 1e-6) return null
+    const t = (steelTopY - origin.y) / direction.y
+    if (t < 0.05 || t > 80) return null
+    const x = origin.x + direction.x * t
+    const z = origin.z + direction.z * t
+    // Tighter pad — must actually be over / near the footprint
+    const topPad = 0.35
+    if (
+      x < hx - topPad ||
+      x > hx + hw + topPad ||
+      z < hz - topPad ||
+      z > hz + hd + topPad
+    ) {
+      return null
+    }
+    return { x, y: steelTopY, z, t }
+  }
 
   let planeX = 0
   let planeZ = 0
@@ -434,8 +341,7 @@ export interface WallAttachPickOptions {
 
 /**
  * Pick the closest valid wall face near a world XZ point (and optional camera ray).
- * Benches: nearest wall from inside the module (auto-orients as you move).
- * Panels: exterior face near the cursor / ray.
+ * Panels: exterior face or roof near the cursor / ray.
  */
 export function findWallAttachmentNear(
   worldX: number,
@@ -449,18 +355,21 @@ export function findWallAttachmentNear(
   if (!def || def.kind !== 'wallAttach') return null
 
   const hosts = primitives.filter((p) => isModuleType(p.typeId))
-  const isBench = typeId === 'bench'
+  const isPanel = isPanelType(typeId)
+  const faceOrder = isPanel ? PANEL_FACE_ORDER : FACE_ORDER
   const { stickyFace = null, ray = null } = options
 
-  // Prefer aiming directly at a wall in the 3D view
+  // Prefer aiming directly at a wall / roof in the 3D view
   if (ray) {
     let bestRay: {
       target: WallAttachmentTarget
-      t: number
+      score: number
     } | null = null
 
+    const lookingDown = ray.direction.y < -0.08
+
     for (const host of hosts) {
-      for (const face of FACE_ORDER) {
+      for (const face of faceOrder) {
         if (faceAlreadyOccupied(primitives, host.id, face, typeId, excludeId)) {
           continue
         }
@@ -472,8 +381,22 @@ export function findWallAttachmentNear(
           excludeId,
         })
         if (!target) continue
-        if (!bestRay || hit.t < bestRay.t) {
-          bestRay = { target, t: hit.t }
+
+        let score = hit.t
+        if (face === 'top') {
+          // Looking down onto the bay → strongly prefer the roof
+          const overBay = pointInsideHost(hit.x, hit.z, host)
+          if (lookingDown && overBay) score -= 8
+          else if (lookingDown) score -= 2
+          else if (overBay) score -= 1
+          if (stickyFace === 'top') score -= 0.5
+        } else if (lookingDown && isPanel) {
+          // Soft-penalize side walls while aiming at the roof
+          score += 1.25
+        }
+
+        if (!bestRay || score < bestRay.score) {
+          bestRay = { target, score }
         }
       }
     }
@@ -481,72 +404,40 @@ export function findWallAttachmentNear(
     if (bestRay) return bestRay.target
   }
 
-  if (isBench) {
-    let containing: PlacedPrimitive | null = null
-    let containingDist = Infinity
-
-    for (const host of hosts) {
-      const margin = BENCH_CAPTURE_MARGIN_FT
-      const inOrNear =
-        worldX >= host.gridX - margin &&
-        worldX <= host.gridX + host.size[0] + margin &&
-        worldZ >= host.gridZ - margin &&
-        worldZ <= host.gridZ + host.size[2] + margin
-      if (!inOrNear) continue
-
-      const cx = host.gridX + host.size[0] / 2
-      const cz = host.gridZ + host.size[2] / 2
-      const dist = Math.hypot(worldX - cx, worldZ - cz)
-      const inside = pointInsideHost(worldX, worldZ, host)
-      const score = inside ? dist : dist + 50
-      if (score < containingDist) {
-        containingDist = score
-        containing = host
-      }
-    }
-
-    if (!containing) return null
-
-    const host = containing
-    const clampedX = Math.min(
-      Math.max(worldX, host.gridX + 0.05),
-      host.gridX + host.size[0] - 0.05,
-    )
-    const clampedZ = Math.min(
-      Math.max(worldZ, host.gridZ + 0.05),
-      host.gridZ + host.size[2] - 0.05,
-    )
-
-    const preferred = nearestFaceInside(clampedX, clampedZ, host, stickyFace)
-    const ordered = [
-      preferred,
-      ...FACE_ORDER.filter((f) => f !== preferred),
-    ]
-
-    for (const face of ordered) {
-      const target = computeWallAttachment(host, face, typeId, {
-        cursor: { x: clampedX, z: clampedZ },
-        primitives,
-        excludeId,
-      })
-      if (!target) continue
-      return target
-    }
-
-    return null
-  }
-
-  // Panels — exterior snap from ground cursor
+  // Panels — exterior / roof snap from ground cursor
   let best: WallAttachmentTarget | null = null
   let bestScore = Infinity
 
   for (const host of hosts) {
-    for (const face of FACE_ORDER) {
+    for (const face of faceOrder) {
       if (faceAlreadyOccupied(primitives, host.id, face, typeId, excludeId)) {
         continue
       }
       const target = computeWallAttachment(host, face, typeId)
       if (!target) continue
+
+      if (face === 'top') {
+        if (!pointInsideHost(worldX, worldZ, host)) continue
+        const cx = host.gridX + host.size[0] / 2
+        const cz = host.gridZ + host.size[2] / 2
+        const nx =
+          (worldX - host.gridX) / Math.max(host.size[0], 1e-6)
+        const nz =
+          (worldZ - host.gridZ) / Math.max(host.size[2], 1e-6)
+        const edgeProx = Math.min(nx, 1 - nx, nz, 1 - nz)
+        // Anywhere inside the bay can be the roof; only the outer ~10%
+        // of the footprint stays reserved for side-wall snaps.
+        if (edgeProx < 0.1 && stickyFace !== 'top') continue
+        const score =
+          (0.5 - edgeProx) * 2 +
+          Math.hypot(worldX - cx, worldZ - cz) * 0.05 +
+          (stickyFace === 'top' ? -1 : 0)
+        if (score < bestScore) {
+          bestScore = score
+          best = target
+        }
+        continue
+      }
 
       const planeDist = distToFacePlane(worldX, worldZ, host, face)
       const absPlane = Math.abs(planeDist)

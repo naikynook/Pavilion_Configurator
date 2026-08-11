@@ -19,7 +19,7 @@ import {
   findWallAttachmentNear,
   pruneOrphanAttachments,
 } from '../logic/wallAttach'
-import { findCornerAttachmentNear } from '../logic/cornerAttach'
+import { findStoolAttachmentNear } from '../logic/stoolAttach'
 
 interface DesignState {
   boundingBox: BoundingBox
@@ -27,6 +27,8 @@ interface DesignState {
   activeTool: ToolMode
   activePrimitiveType: PrimitiveTypeId | null
   activeBaseHeight: BaseHeightFt
+  /** Next wall-panel finish: `null` = plywood texture, otherwise solid hex. */
+  activePanelColor: string | null
   selectedPrimitiveId: string | null
   hoverGrid: { x: number; z: number } | null
   hoverAttachment: WallAttachmentTarget | null
@@ -36,6 +38,8 @@ interface DesignState {
   setActiveTool: (tool: ToolMode) => void
   setActivePrimitiveType: (typeId: PrimitiveTypeId | null) => void
   setActiveBaseHeight: (height: BaseHeightFt) => void
+  setActivePanelColor: (color: string | null) => void
+  setPrimitiveColor: (id: string, color: string | null) => void
   setHoverGrid: (
     grid: { x: number; z: number } | null,
     valid: boolean,
@@ -48,7 +52,7 @@ interface DesignState {
 }
 
 function isHostedKind(kind: string) {
-  return kind === 'wallAttach' || kind === 'cornerAttach'
+  return kind === 'wallAttach' || kind === 'baseAttach'
 }
 
 function occupiesCells(primitive: PlacedPrimitive) {
@@ -135,11 +139,12 @@ export function canPlacePrimitive(
 }
 
 export const useDesignStore = create<DesignState>((set, get) => ({
-  boundingBox: { width: 10, depth: 10, height: 12 },
+  boundingBox: { width: 20, depth: 20, height: 12 },
   primitives: [],
   activeTool: 'select',
   activePrimitiveType: null,
   activeBaseHeight: 1,
+  activePanelColor: null,
   selectedPrimitiveId: null,
   hoverGrid: null,
   hoverAttachment: null,
@@ -168,6 +173,18 @@ export const useDesignStore = create<DesignState>((set, get) => ({
 
   setActiveBaseHeight: (height) => set({ activeBaseHeight: height }),
 
+  setActivePanelColor: (color) => set({ activePanelColor: color }),
+
+  setPrimitiveColor: (id, color) =>
+    set((state) => ({
+      primitives: state.primitives.map((p) => {
+        if (p.id !== id) return p
+        if (color) return { ...p, color }
+        const { color: _removed, ...rest } = p
+        return rest
+      }),
+    })),
+
   setHoverGrid: (grid, valid, attachment = null) =>
     set((state) => {
       const sameGrid =
@@ -179,8 +196,10 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         state.hoverAttachment?.cellIx === attachment?.cellIx &&
         state.hoverAttachment?.cellIz === attachment?.cellIz &&
         state.hoverAttachment?.rotationY === attachment?.rotationY &&
+        state.hoverAttachment?.rotationX === attachment?.rotationX &&
         state.hoverAttachment?.attachAlong === attachment?.attachAlong &&
         state.hoverAttachment?.center.x === attachment?.center.x &&
+        state.hoverAttachment?.center.y === attachment?.center.y &&
         state.hoverAttachment?.center.z === attachment?.center.z
       if (sameGrid && sameAttach && state.placementValid === valid) {
         return state
@@ -200,6 +219,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
     const {
       activePrimitiveType,
       activeBaseHeight,
+      activePanelColor,
       boundingBox,
       primitives,
       hoverAttachment,
@@ -242,6 +262,9 @@ export const useDesignStore = create<DesignState>((set, get) => ({
         cellIx: hoverAttachment.cellIx,
         cellIz: hoverAttachment.cellIz,
         attachAlong: hoverAttachment.attachAlong,
+        ...(activePrimitiveType === 'panel8x8' && activePanelColor
+          ? { color: activePanelColor }
+          : {}),
       }
       set({ primitives: [...primitives, primitive], selectedPrimitiveId: null })
       return
@@ -300,10 +323,7 @@ export const useDesignStore = create<DesignState>((set, get) => ({
 
 export function useBillOfMaterials() {
   const primitives = useDesignStore((state) => state.primitives)
-  return useMemo(() => {
-    const modulesOnly = primitives.filter((p) => isModuleType(p.typeId))
-    return buildBillOfMaterials(modulesOnly)
-  }, [primitives])
+  return useMemo(() => buildBillOfMaterials(primitives), [primitives])
 }
 
 export function gridToWorldPosition(
@@ -319,4 +339,4 @@ export function gridToWorldPosition(
   }
 }
 
-export { findWallAttachmentNear, findCornerAttachmentNear }
+export { findWallAttachmentNear, findStoolAttachmentNear }

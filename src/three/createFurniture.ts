@@ -1,335 +1,181 @@
 import * as THREE from 'three'
-import type { PrimitiveTypeId } from '../types'
+import type { ModuleCorner, PrimitiveTypeId } from '../types'
 import {
-  PANEL_EDGE_CLEARANCE_FT,
-  PANEL_THICKNESS_FT,
+  getPanelDisplaySize,
   STEEL_EDGE_INSET_FT,
-  STEEL_HEIGHT_FT,
 } from '../constants/primitives'
-import { createPlywoodMaterial } from './moduleMaterials'
+import { applyPanelFinish, applyPlywoodToObject, createPlywoodMaterial } from './moduleMaterials'
+import { addPanelBolts } from './createPanelHardware'
+import { STEEL_TUBE_FT } from './createModuleConnections'
 
-const PLY_T = 0.1 // ~1.2″ plywood thickness for furniture
-
-/** Seat height ~16″ — keep in sync with wallAttach */
-export const BENCH_SEAT_HEIGHT_FT = 1.33
-export const BENCH_DEPTH_FT = 1.5
-/** Nominal bay size (ft) — how many benches fit along a wall */
-export const BENCH_BAY_FT = 4
-/** Same seam as tiled plywood bases (~1½″ — no connectors between benches) */
-export const BENCH_SEAM_GAP_FT = 0.125
-/** One tiled plywood base cell — corner L spans this full base */
+/** One tiled plywood base cell (ft) */
 export const BASE_CELL_FT = 4
+/** Inter-base / inter-cell seam (ft) — stools must not cross this */
+export const BASE_SEAM_GAP_FT = 0.125
+
+/** Authored stool footprint / height from Stool.obj (18×18×18.75″) */
+export const STOOL_WIDTH_FT = 18 / 12
+export const STOOL_DEPTH_FT = 18 / 12
+export const STOOL_HEIGHT_FT = 18.75 / 12
 
 /**
- * Clearance from the steel outer face into the bay so benches sit
- * in front of the tube, not through it (~2½″).
+ * Clearance from a cell edge to the stool silhouette.
+ * - Seam edges (between base tiles): stay on the plywood, off the gap.
+ * - Module perimeter: clear steel tube + foot base plates.
+ *   (About 4½″ past the tube; on a lone 4×4 both sides are perimeter so
+ *   positions are clamped so neighboring stools don’t overlap.)
  */
-export const BENCH_FROM_STEEL_FT = 0.2
+export const STOOL_SEAM_CLEAR_FT = BASE_SEAM_GAP_FT / 2 + 0.5 / 12
+export const STOOL_STEEL_CLEAR_FT =
+  STEEL_EDGE_INSET_FT + STEEL_TUBE_FT + 5 / 12
 
-/** Distance from footprint outer edge to the bench back face */
-export function benchBackSetbackFt() {
-  return STEEL_EDGE_INSET_FT + BENCH_FROM_STEEL_FT
+export interface StoolCellEdgeFlags {
+  /** True when this cell edge is on the host module perimeter (steel + feet). */
+  west: boolean
+  east: boolean
+  south: boolean
+  north: boolean
 }
 
-/** @deprecated alias */
-export const CORNER_ARM_FT = BASE_CELL_FT
-
-/** How many 4 ft bench bays fit on a wall. */
-export function benchBayCount(wallWidth: number) {
-  return Math.max(0, Math.floor((wallWidth + 1e-6) / BENCH_BAY_FT))
+/** Center inset from one cell edge for an 18″ stool. */
+export function stoolEdgeCenterInsetFt(isPerimeter: boolean) {
+  const clear = isPerimeter ? STOOL_STEEL_CLEAR_FT : STOOL_SEAM_CLEAR_FT
+  return clear + STOOL_WIDTH_FT / 2
 }
 
 /**
- * Actual bench length for a wall — slightly under 4 ft when multiple bays
- * share a face, so adjacent pieces leave the same gap as the base boxes.
+ * Spread two center coordinates so stools stay at least one stool-width apart.
+ * Biases toward the side that requested more inset (usually the perimeter).
  */
-export function benchLengthForWall(wallWidth: number) {
-  const count = Math.max(1, benchBayCount(wallWidth))
-  const outerInset = BENCH_SEAM_GAP_FT / 2
-  const usable = Math.max(wallWidth - 2 * outerInset, BENCH_BAY_FT * 0.85)
-  const internalGaps = BENCH_SEAM_GAP_FT * (count - 1)
-  return (usable - internalGaps) / count
-}
+function separateCenters(lo: number, hi: number): { lo: number; hi: number } {
+  const minSpan = STOOL_WIDTH_FT // stools may touch; never overlap
+  if (hi - lo >= minSpan) return { lo, hi }
 
-/**
- * Arm length on one 4×4 base: from steel setback to where the inter-base
- * gap begins (does not spill onto the neighboring cell).
- */
-export function cornerArmLengthFt() {
-  const setback = benchBackSetbackFt()
-  const gapHalf = BENCH_SEAM_GAP_FT / 2
-  return Math.max(BASE_CELL_FT - gapHalf - setback, BENCH_DEPTH_FT + 0.75)
-}
+  const mid = (lo + hi) / 2
+  const half = minSpan / 2
+  let nextLo = mid - half
+  let nextHi = mid + half
 
-/** Centers of bench bays along a wall, with base-matching seams between them. */
-export function benchSlotsAlong(wallWidth: number): number[] {
-  const count = benchBayCount(wallWidth)
-  if (count <= 0) return []
-  const length = benchLengthForWall(wallWidth)
-  const outerInset = BENCH_SEAM_GAP_FT / 2
-  const slots: number[] = []
-  for (let i = 0; i < count; i++) {
-    slots.push(outerInset + length / 2 + i * (length + BENCH_SEAM_GAP_FT))
+  const minCenter = STOOL_SEAM_CLEAR_FT + STOOL_WIDTH_FT / 2
+  const maxCenter = BASE_CELL_FT - minCenter
+  if (nextLo < minCenter) {
+    nextLo = minCenter
+    nextHi = nextLo + minSpan
   }
-  return slots
+  if (nextHi > maxCenter) {
+    nextHi = maxCenter
+    nextLo = nextHi - minSpan
+  }
+  return { lo: nextLo, hi: nextHi }
 }
 
 /**
- * Plywood wall panel (procedural fallback when GLB isn’t loaded yet).
- * Local: width X, height Y, thickness Z.
+ * Local XZ of a quadrant center inside a 4×4 cell (cell origin at SW).
+ * Perimeter edges use a deeper inset so stools clear corner foot plates;
+ * interior seams only need a small offset so stools never span the gap.
  */
-export function createWallPanelMesh(wallWidth: number): THREE.Group {
-  const group = new THREE.Group()
-  const w = wallWidth - 2 * STEEL_EDGE_INSET_FT - PANEL_EDGE_CLEARANCE_FT
-  const h = STEEL_HEIGHT_FT - PANEL_EDGE_CLEARANCE_FT
-  const t = PANEL_THICKNESS_FT
-  const mat = createPlywoodMaterial()
+export function stoolQuadrantCenterLocal(
+  quadrant: ModuleCorner,
+  edges: StoolCellEdgeFlags = {
+    west: true,
+    east: true,
+    south: true,
+    north: true,
+  },
+): { x: number; z: number } {
+  let xWest = stoolEdgeCenterInsetFt(edges.west)
+  let xEast = BASE_CELL_FT - stoolEdgeCenterInsetFt(edges.east)
+  let zSouth = stoolEdgeCenterInsetFt(edges.south)
+  let zNorth = BASE_CELL_FT - stoolEdgeCenterInsetFt(edges.north)
 
-  const sheet = new THREE.Mesh(new THREE.BoxGeometry(w, h, t), mat)
-  sheet.name = 'wall-panel-sheet'
-  group.add(sheet)
-  group.userData.panelLocalSize = [w, h, t]
-  return group
-}
+  ;({ lo: xWest, hi: xEast } = separateCenters(xWest, xEast))
+  ;({ lo: zSouth, hi: zNorth } = separateCenters(zSouth, zNorth))
 
-function addBenchShell(
-  group: THREE.Group,
-  mat: THREE.Material,
-  length: number,
-  depth: number,
-  seatH: number,
-  cx: number,
-  cz: number,
-) {
-  const t = PLY_T
-
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(length, t, depth), mat)
-  seat.position.set(cx, seatH - t / 2, cz)
-  group.add(seat)
-
-  const front = new THREE.Mesh(
-    new THREE.BoxGeometry(length, seatH - t, t),
-    mat,
-  )
-  front.position.set(cx, (seatH - t) / 2, cz + depth / 2 - t / 2)
-  group.add(front)
-
-  const back = new THREE.Mesh(
-    new THREE.BoxGeometry(length, seatH - t, t),
-    mat,
-  )
-  back.position.set(cx, (seatH - t) / 2, cz - depth / 2 + t / 2)
-  group.add(back)
-
-  for (const side of [-1, 1] as const) {
-    const end = new THREE.Mesh(
-      new THREE.BoxGeometry(t, seatH - t, depth - 2 * t),
-      mat,
-    )
-    end.position.set(cx + side * (length / 2 - t / 2), (seatH - t) / 2, cz)
-    group.add(end)
+  switch (quadrant) {
+    case 'sw':
+      return { x: xWest, z: zSouth }
+    case 'se':
+      return { x: xEast, z: zSouth }
+    case 'nw':
+      return { x: xWest, z: zNorth }
+    case 'ne':
+      return { x: xEast, z: zNorth }
   }
 }
 
-/**
- * Low boxy plywood bench (no backrest). Origin at bottom center;
- * length on X; depth on +Z into the bay; back face at −Z (toward the steel).
- * Length matches bay sizing so pieces leave a base-sized seam.
- */
-export function createBenchMesh(wallWidth = BENCH_BAY_FT): THREE.Group {
-  const group = new THREE.Group()
-  const mat = createPlywoodMaterial()
-
-  const length = benchLengthForWall(wallWidth)
-  const depth = BENCH_DEPTH_FT
-  const seatH = BENCH_SEAT_HEIGHT_FT
-
-  addBenchShell(group, mat, length, depth, seatH, 0, 0)
-
-  group.userData.benchHeight = seatH
-  group.userData.benchDepth = depth
-  group.userData.benchLength = length
-  return group
+/** @deprecated use stoolEdgeCenterInsetFt */
+export function stoolCenterInsetFt() {
+  return stoolEdgeCenterInsetFt(true)
 }
 
 /**
- * Clean L-shaped corner bench for one 4×4 base.
- * Local origin at the outer corner; arms along +X and +Z stop before the
- * inter-base gap. Mirror via scale for SE / NW / NE.
+ * Procedural fallback: two stacked ¾″ sheets matching the authored panel.
+ * Local: bottom y=0, back z=0, +Z into bay. Sized to fitted steel.
  */
-export function createCornerBenchMesh(): THREE.Group {
-  const group = new THREE.Group()
-  const mat = createPlywoodMaterial()
-  const arm = cornerArmLengthFt()
-  const depth = BENCH_DEPTH_FT
-  const seatH = BENCH_SEAT_HEIGHT_FT
-  const t = PLY_T
-  const ext = Math.max(arm - depth, 0.05)
-  const apronH = seatH - t
-
-  // —— Seat (L) ——
-  const seatX = new THREE.Mesh(new THREE.BoxGeometry(arm, t, depth), mat)
-  seatX.position.set(arm / 2, seatH - t / 2, depth / 2)
-  group.add(seatX)
-
-  const seatZ = new THREE.Mesh(new THREE.BoxGeometry(depth, t, ext), mat)
-  seatZ.position.set(depth / 2, seatH - t / 2, depth + ext / 2)
-  group.add(seatZ)
-
-  // —— Outer aprons (full L perimeter toward steel) ——
-  // Along +X arm (south back)
-  const apronOuterX = new THREE.Mesh(
-    new THREE.BoxGeometry(arm, apronH, t),
-    mat,
-  )
-  apronOuterX.position.set(arm / 2, apronH / 2, t / 2)
-  group.add(apronOuterX)
-
-  // Along +Z arm (west back) — full arm length, including the corner square
-  const apronOuterZ = new THREE.Mesh(
-    new THREE.BoxGeometry(t, apronH, arm),
-    mat,
-  )
-  apronOuterZ.position.set(t / 2, apronH / 2, arm / 2)
-  group.add(apronOuterZ)
-
-  // —— Inner aprons (L notch into the bay) ——
-  const apronInnerX = new THREE.Mesh(
-    new THREE.BoxGeometry(ext, apronH, t),
-    mat,
-  )
-  apronInnerX.position.set(depth + ext / 2, apronH / 2, depth - t / 2)
-  group.add(apronInnerX)
-
-  const apronInnerZ = new THREE.Mesh(
-    new THREE.BoxGeometry(t, apronH, ext),
-    mat,
-  )
-  apronInnerZ.position.set(depth - t / 2, apronH / 2, depth + ext / 2)
-  group.add(apronInnerZ)
-
-  // —— Free ends (where the L meets the base gap) ——
-  const endX = new THREE.Mesh(
-    new THREE.BoxGeometry(t, apronH, depth - 2 * t),
-    mat,
-  )
-  endX.position.set(arm - t / 2, apronH / 2, depth / 2)
-  group.add(endX)
-
-  const endZ = new THREE.Mesh(
-    new THREE.BoxGeometry(depth - 2 * t, apronH, t),
-    mat,
-  )
-  endZ.position.set(depth / 2, apronH / 2, arm - t / 2)
-  group.add(endZ)
-
-  group.userData.benchHeight = seatH
-  group.userData.cornerArm = arm
-  group.userData.benchDepth = depth
-  group.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
-      const mats = Array.isArray(child.material)
-        ? child.material
-        : [child.material]
-      for (const m of mats) {
-        if (m instanceof THREE.Material) m.side = THREE.DoubleSide
-      }
-    }
-  })
-  return group
-}
-
-/**
- * Solid L ghost for placement preview — one continuous mesh.
- * Caller should pass a clone of the wall-bench preview material so color /
- * opacity stay identical (do not use DoubleSide — it doubles opacity).
- */
-export function createCornerBenchPreviewMesh(
-  material: THREE.Material,
+export function createWallPanelMesh(
+  wallWidth = 8,
+  color?: string | null,
 ): THREE.Group {
   const group = new THREE.Group()
-  const arm = cornerArmLengthFt()
-  const depth = BENCH_DEPTH_FT
-  const h = BENCH_SEAT_HEIGHT_FT
+  const [w, h, t] = getPanelDisplaySize(wallWidth)
+  const seamGap = 0.1 / 12
+  const seam = (h - seamGap) / 2
 
-  const shape = new THREE.Shape()
-  shape.moveTo(0, 0)
-  shape.lineTo(arm, 0)
-  shape.lineTo(arm, -depth)
-  shape.lineTo(depth, -depth)
-  shape.lineTo(depth, -arm)
-  shape.lineTo(0, -arm)
-  shape.closePath()
+  const lower = new THREE.Mesh(new THREE.BoxGeometry(w, seam, t))
+  lower.name = 'wall-panel-sheet-lower'
+  lower.position.set(0, seam / 2, t / 2)
+  group.add(lower)
 
-  const geom = new THREE.ExtrudeGeometry(shape, {
-    depth: h,
-    bevelEnabled: false,
-    curveSegments: 1,
-    steps: 1,
-  })
-  geom.rotateX(-Math.PI / 2)
-  geom.computeVertexNormals()
+  const upper = new THREE.Mesh(new THREE.BoxGeometry(w, seam, t))
+  upper.name = 'wall-panel-sheet-upper'
+  upper.position.set(0, seam + seamGap + seam / 2, t / 2)
+  group.add(upper)
 
-  const mesh = new THREE.Mesh(geom, material)
-  group.add(mesh)
-  group.userData.previewMesh = mesh
-
-  group.userData.cornerArm = arm
-  group.userData.benchDepth = depth
+  applyPanelFinish(group, color)
+  addPanelBolts(group, { sx: 1, sy: 1 })
+  group.userData.panelSize = [w, h, t]
   return group
 }
 
 /**
- * Pedestal plywood table: top + central column + wider base plate.
- * Origin at bottom of base (sits on the ground).
+ * Simple box proxy for the 18″ stool (used until / if the GLB fails to load).
+ * Origin at bottom center — same as the optimized stool GLB.
  */
-export function createPodiumMesh(): THREE.Group {
+export function createStoolMesh(): THREE.Group {
   const group = new THREE.Group()
+  group.name = 'stool'
   const mat = createPlywoodMaterial()
-  const t = PLY_T
-
-  const topW = 2.5
-  const topD = 1.75
-  const colW = 0.85
-  const colD = 0.85
-  const baseW = 1.35
-  const baseD = 1.35
-  const h = 3.0
-
-  const base = new THREE.Mesh(new THREE.BoxGeometry(baseW, t, baseD), mat)
-  base.position.set(0, t / 2, 0)
-  group.add(base)
-
-  const colH = h - 2 * t
-  const col = new THREE.Mesh(new THREE.BoxGeometry(colW, colH, colD), mat)
-  col.position.set(0, t + colH / 2, 0)
-  group.add(col)
-
-  const top = new THREE.Mesh(new THREE.BoxGeometry(topW, t, topD), mat)
-  top.position.set(0, h - t / 2, 0)
-  group.add(top)
-
-  group.userData.podiumSize = [topW, h, topD]
+  const w = STOOL_WIDTH_FT
+  const d = STOOL_DEPTH_FT
+  const h = STOOL_HEIGHT_FT
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat)
+  mesh.name = 'stool-proxy'
+  mesh.position.set(0, h / 2, 0)
+  group.add(mesh)
+  applyPlywoodToObject(group)
+  group.userData.stoolSize = [w, h, d]
   return group
 }
 
 /** Build a furniture / panel mesh for the given type (and wall width when needed). */
 export function createAccessoryMesh(
   typeId: PrimitiveTypeId,
-  wallWidth = 8,
+  _wallWidth = 8,
+  color?: string | null,
 ): THREE.Group {
   switch (typeId) {
-    case 'panel4x8':
-      return createWallPanelMesh(4)
     case 'panel8x8':
-      return createWallPanelMesh(8)
-    case 'bench':
-      return createBenchMesh(wallWidth)
-    case 'benchCorner':
-      return createCornerBenchMesh()
-    case 'podium':
-      return createPodiumMesh()
+      return createWallPanelMesh(8, color)
+    case 'stool':
+      return createStoolMesh()
     default:
       return new THREE.Group()
   }
+}
+
+/** @deprecated kept for any leftover imports during migration */
+export const BENCH_SEAT_HEIGHT_FT = STOOL_HEIGHT_FT
+export const BENCH_DEPTH_FT = STOOL_DEPTH_FT
+export function benchBackSetbackFt() {
+  return STOOL_STEEL_CLEAR_FT
 }

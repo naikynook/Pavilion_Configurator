@@ -1,102 +1,29 @@
 # Pavilion Configurator
 
-A modular pavilion configurator for DIYers with a 3D design canvas, toolbox, and live materials panel.
+![Pavilion render 1](docs/readme/render-1.png)
 
-## Quick start (Windows)
+The Pavilion Configurator is a project rooted in modularity, temporary structures, and DIY spirit. Taking the form of a website, the canvas allows users to experiment with different types of modules to create a truly unique combination suited to any sites needs. The left menu navigates the controls, while the right menu keeps track of the materials needed for the setup in the canvas. It takes into account bolts, screws, lumber, plywood, and steel beams. Additionally, DWG files have been included for the matching stools and wall panels, so those with access to CNC Machines can easily replicate the point attractor pattern shown in the preview. Visitors can download the glb file of their creation or even a usdz file to experience it in-situ AR on the iPhone. 
 
-**Double-click `start.bat`** in the project folder.
+Full instruction files with dimensions are also available via the right menu bar. The instructions go over hardware connections, dimensions, base assembly, furniture assembly, and provide and example layout.
 
-It will install dependencies (first run only) and open `http://localhost:5173`.
+![Pavilion render 2](docs/readme/render-2.png)
 
-## Manual start
+My work directly builds upon two precedents: StockaStudio and my advisor, Adam Vosburgh's, Kallax Configurator. Both deal with modular furniture, but diverge in many other ways. Stock A Studio uses perforated square tubing, along with other industrial hardware, to create furniture that promises endless combinations. Their installations are bespoke and dramatically change depending on the event type. Adam's Kallax Configurator encourages users to experiment with their own version of Ikea's Kallax shelving units, while streamlining the DIY process by including many of the same materials I have incorporated into my own project.
 
-Requires [Node.js](https://nodejs.org/) (v18+).
+![StockaStudio installation](docs/readme/stocka-studio.jpg)
 
-```bash
-npm install
-npm run dev
-```
+![Kallax Configurator](docs/readme/kallax-configurator.jpg)
 
-Open **http://localhost:5173** in your browser.
+Working in that framework, I began by designing the form. Ultimately, I picked the cube based on its inherent ability to be incorporated into a larger system. The Steel Frame on top provides cover, while allowing for additional connections in the future for many uses. Along the form-finding process I found a lot of inspiration in mobile kiosks, such as those found in the mall or vendors on the street. Much like Adam, I opted for a scrolling menu bar rather than a toolbox to maximize clarity! I did not want any potential users to get confused by small icons, opting for large and clear descriptions throughout.
 
-## Important — avoid a blank / loading screen
+![Mall kiosk](docs/readme/mall-kiosk.jpg)
 
-| Do this | Don't do this |
-|---------|----------------|
-| Run `start.bat` or `npm run dev` | Open `index.html` directly |
-| Visit `http://localhost:5173` | Use VS Code Live Server |
-| Wait for terminal to show the local URL | Double-click `index.html` in Explorer |
+The site itself is a React and TypeScript app built with Vite. Shared design state lives in a Zustand store, so when any changes are made, all panels update from the same source. The 3D view is powered by Three.js. Placement rules keep pieces inside the site, combine modules, prevent overlaps, and snap panels to frames. The materials logic counts the bases, beams, hardware, etc, that is used to update the bill of materials and generate the McMaster-Carr ordering sheet.
 
-If you only see "Loading Pavilion Configurator…" forever, you are not using the Vite dev server.
+![Pavilion Configurator](docs/readme/pavilion-configurator.png)
 
-After 4 seconds the page will show setup instructions if the app fails to start.
+I came to this project with a desire to bring adaptable pavilion design/pop-up structures to the masses. As someone with experience in throwing events, any kind of custom staging or exhibition design is a large undertaking that is simply not worth it in most cases. I had hoped to bridge the gap with The Pavilion Configurator. This project does make that type of design more accessible, but it falls short by requiring intermediate woodworking experience and deep pockets. Each module costs several hundred dollars to make in their current state.
 
-## Troubleshooting
+Despite falling short of some goals, I really enjoyed the design process. Actually thinking about the construction of an object provided an interesting challenge, while the website process introduced me to a world of interactivity I did not realize was so accessible. I naturally gravitated toward a project like this because of my own interest in modular furniture, a quality I wanted to bring to the built environment. There is something quite satisfying about taking a few modules and being able to produce nearly limitless permutations with meaningful differences.
 
-**Stuck on loading**
-1. Close the browser tab
-2. Double-click `start.bat`
-3. Wait for `npm install` to finish (first time only)
-4. Browser should open to `http://localhost:5173`
-
-**npm install fails**
-- The project is in OneDrive, which can lock files. Try copying it to `C:\Projects\Pavilion_Configurator` and run `start.bat` there.
-
-**Node not found**
-- Install Node.js from https://nodejs.org/, restart your terminal, then run `start.bat` again.
-
-## GitHub Pages deployment
-
-Live site: **https://naikynook.github.io/Pavilion_Configurator/**
-
-Deploy uses **GitHub Actions only** — it never commits back to `main`, so you should not need to pull before every push.
-
-### One-time Pages setting
-
-In **[Settings → Pages](https://github.com/naikynook/Pavilion_Configurator/settings/pages)**:
-
-- **Source:** GitHub Actions (not "Deploy from a branch")
-
-### Git workflow (avoid merge commits)
-
-In **GitHub Desktop**: **File → Options → Git** → enable **"Rebase current branch after pull"**.
-
-Then your normal flow is just:
-
-```bash
-git add .
-git commit -m "your message"
-git push origin main
-```
-
-Only pull if you intentionally changed something on github.com. Use rebase, not merge, to avoid extra "Merge branch 'main'" commits and duplicate workflow runs.
-
-## Build
-
-```bash
-npm run build
-npm run preview
-```
-
-## Features
-
-- **3D canvas** — Orbit, pan, and zoom
-- **Bounding box** — Adjustable site dimensions
-- **Grid placement** — Snap box primitives to a 1-unit grid
-- **Materials panel** — Live bill of materials
-
-## Controls
-
-| Action | Input |
-|--------|-------|
-| Orbit camera | Left-drag |
-| Pan camera | Right-drag |
-| Zoom | Scroll wheel |
-| Place primitive | Select from toolbox, click grid |
-| Delete selected | Delete or Backspace |
-
-## Tech stack
-
-- React + TypeScript + Vite
-- Three.js
-- Zustand
+![Plaza render](docs/readme/plaza-render.png)

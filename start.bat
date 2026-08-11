@@ -3,12 +3,6 @@ setlocal EnableExtensions
 
 cd /d "%~dp0"
 
-REM Prefer portable Node bundled in .tools, then system Node
-set "PORTABLE_NODE=%~dp0.tools\node-v22.18.0-win-x64"
-if exist "%PORTABLE_NODE%\node.exe" (
-  set "PATH=%PORTABLE_NODE%;%PATH%"
-)
-
 where node >nul 2>&1
 if errorlevel 1 (
   echo.

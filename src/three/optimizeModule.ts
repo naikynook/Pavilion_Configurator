@@ -3,12 +3,42 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 const BASE_HEIGHT_RATIO = 0.12
 
+/** Expand quantized / interleaved attributes to plain Float32 before baking. */
+function floatGeometryFrom(source: THREE.BufferGeometry): THREE.BufferGeometry {
+  const geometry = new THREE.BufferGeometry()
+  const pos = source.getAttribute('position')
+  if (!pos || pos.count <= 0) return geometry
+
+  const positions = new Float32Array(pos.count * 3)
+  for (let i = 0; i < pos.count; i++) {
+    positions[i * 3] = pos.getX(i)
+    positions[i * 3 + 1] = pos.getY(i)
+    positions[i * 3 + 2] = pos.getZ(i)
+  }
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+
+  const nrm = source.getAttribute('normal')
+  if (nrm && nrm.count === pos.count) {
+    const normals = new Float32Array(nrm.count * 3)
+    for (let i = 0; i < nrm.count; i++) {
+      normals[i * 3] = nrm.getX(i)
+      normals[i * 3 + 1] = nrm.getY(i)
+      normals[i * 3 + 2] = nrm.getZ(i)
+    }
+    geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3))
+  }
+
+  if (source.index) {
+    geometry.setIndex(source.index.clone())
+  }
+  return geometry
+}
+
 function collectWorldGeometry(mesh: THREE.Mesh) {
-  const geometry = mesh.geometry.clone()
+  const geometry = floatGeometryFrom(mesh.geometry)
   mesh.updateWorldMatrix(true, false)
   geometry.applyMatrix4(mesh.matrixWorld)
 
-  // Merging requires consistent attributes — keep position (+ normal if present)
   const position = geometry.getAttribute('position')
   if (!position) return null
 
@@ -16,7 +46,6 @@ function collectWorldGeometry(mesh: THREE.Mesh) {
     geometry.computeVertexNormals()
   }
 
-  // Drop UVs/colors/etc. that may be missing on some meshes and block merge
   for (const key of Object.keys(geometry.attributes)) {
     if (key !== 'position' && key !== 'normal') {
       geometry.deleteAttribute(key)
@@ -25,6 +54,40 @@ function collectWorldGeometry(mesh: THREE.Mesh) {
   geometry.morphAttributes = {}
 
   return geometry
+}
+
+/**
+ * Bake node scales/translations into mesh geometry (identity transforms).
+ * Needed for Meshopt-quantized assets like the stool, where size lives in
+ * node.scale rather than vertex units.
+ */
+export function flattenAuthoredScene(source: THREE.Object3D): THREE.Group {
+  source.updateMatrixWorld(true)
+  const invRoot = source.matrixWorld.clone().invert()
+  const group = new THREE.Group()
+  group.name = source.name || 'authored'
+
+  source.traverse((child) => {
+    if (!(child instanceof THREE.Mesh) || !child.geometry) return
+    const geometry = floatGeometryFrom(child.geometry)
+    if (!geometry.getAttribute('position')) return
+
+    const local = new THREE.Matrix4().multiplyMatrices(
+      invRoot,
+      child.matrixWorld,
+    )
+    geometry.applyMatrix4(local)
+    if (!geometry.getAttribute('normal')) {
+      geometry.computeVertexNormals()
+    }
+
+    const mesh = new THREE.Mesh(geometry, child.material)
+    mesh.name = child.name && child.name !== '' ? child.name : 'stool'
+    mesh.userData.sharedResource = true
+    group.add(mesh)
+  })
+
+  return group
 }
 
 /**

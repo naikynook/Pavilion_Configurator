@@ -9,13 +9,13 @@
   --text-secondary: #6e6e73;
   --text-tertiary: #aeaeb2;
 
-  --accent: #0071e3;
-  --accent-hover: #0077ed;
-  --accent-subtle: #e8f2ff;
+  --accent: #b84fd9;
+  --accent-hover: #c96beb;
+  --accent-subtle: #f6e8fc;
   --accent-on: #ffffff;
   --border: #d2d2d7;
   --border-strong: #86868b;
-  --border-focus: #0071e3;
+  --border-focus: #b84fd9;
 
   --success: #34c759;
   --warning: #ff9500;
@@ -142,6 +142,17 @@ button {
   color: var(--text-primary);
   text-transform: none;
   letter-spacing: 0;
+}
+
+.sidebar__hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.sidebar__hint--error {
+  color: #b42318;
 }
 
 .sidebar__hint a {
@@ -298,6 +309,69 @@ button {
   border-color: var(--accent);
   color: var(--accent-on);
   box-shadow: var(--shadow-subtle);
+}
+
+.panel-color {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.panel-color__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.panel-color__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-color__plywood {
+  flex: 1;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.panel-color__plywood:hover {
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+}
+
+.panel-color__plywood--active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.panel-color__picker {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.panel-color__picker input {
+  width: 140%;
+  height: 140%;
+  margin: -20%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  background: none;
 }
 
 .input-row {
@@ -676,6 +750,8 @@ button {
   color: var(--text-primary);
   font-size: 15px;
   text-align: left;
+  text-decoration: none;
+  box-sizing: border-box;
   transition:
     background 150ms var(--ease-out),
     border-color 150ms var(--ease-out);

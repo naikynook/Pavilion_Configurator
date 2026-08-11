@@ -34,8 +34,8 @@ if (typeof globalThis.FileReader === 'undefined') {
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 const name = (process.argv[2] || '4x4').replace(/\.glb$/i, '')
-const inputPath = path.join(root, `public/models/${name}.glb`)
-const outputPath = path.join(root, `public/models/${name}-opt.glb`)
+const inputPath = path.join(root, `asset-pipeline/source-models/${name}.glb`)
+const outputPath = path.join(root, `public/3d-models/${name}-opt.glb`)
 
 function collectWorldGeometry(mesh) {
   const geometry = mesh.geometry.clone()

@@ -31,13 +31,33 @@ export function LeftSidebar() {
   const activeTool = useDesignStore((s) => s.activeTool)
   const activePrimitiveType = useDesignStore((s) => s.activePrimitiveType)
   const activeBaseHeight = useDesignStore((s) => s.activeBaseHeight)
+  const activePanelColor = useDesignStore((s) => s.activePanelColor)
   const selectedPrimitiveId = useDesignStore((s) => s.selectedPrimitiveId)
+  const primitives = useDesignStore((s) => s.primitives)
   const setBoundingBox = useDesignStore((s) => s.setBoundingBox)
   const setActiveTool = useDesignStore((s) => s.setActiveTool)
   const setActivePrimitiveType = useDesignStore((s) => s.setActivePrimitiveType)
   const setActiveBaseHeight = useDesignStore((s) => s.setActiveBaseHeight)
+  const setActivePanelColor = useDesignStore((s) => s.setActivePanelColor)
+  const setPrimitiveColor = useDesignStore((s) => s.setPrimitiveColor)
   const removeSelected = useDesignStore((s) => s.removeSelected)
   const clearPrimitives = useDesignStore((s) => s.clearPrimitives)
+
+  const selected = primitives.find((p) => p.id === selectedPrimitiveId)
+  const selectedIsPanel = selected?.typeId === 'panel8x8'
+  const editingPanelColor = selectedIsPanel
+  const panelColorValue = selectedIsPanel
+    ? selected?.color ?? null
+    : activePanelColor
+  const pickerColor = panelColorValue ?? '#d4c4a8'
+
+  const applyPanelColor = (color: string | null) => {
+    if (editingPanelColor && selectedPrimitiveId) {
+      setPrimitiveColor(selectedPrimitiveId, color)
+    } else {
+      setActivePanelColor(color)
+    }
+  }
 
   return (
     <aside className="sidebar sidebar--left">
@@ -70,7 +90,7 @@ export function LeftSidebar() {
               <input
                 type="number"
                 min={4}
-                max={30}
+                max={100}
                 value={boundingBox.width}
                 onChange={(e) =>
                   setBoundingBox({ width: Math.max(4, Number(e.target.value)) })
@@ -82,7 +102,7 @@ export function LeftSidebar() {
               <input
                 type="number"
                 min={4}
-                max={30}
+                max={100}
                 value={boundingBox.depth}
                 onChange={(e) =>
                   setBoundingBox({ depth: Math.max(4, Number(e.target.value)) })
@@ -157,8 +177,8 @@ export function LeftSidebar() {
       <section className="sidebar__section">
         <h2 className="sidebar__section-title">Wall panels</h2>
         <p className="sidebar__hint">
-          Aim at a matching wall in the 3D view (4 ft or 8 ft bay) — the panel
-          snaps when you point at or near that face.
+          Two-sheet ~90″ for an 8×8 bay — snaps to an exterior wall, or flat on
+          the roof. Use plywood texture, or pick a solid paint color.
         </p>
         <div className="tool-list">
           {PANEL_DEFINITIONS.map((def) => (
@@ -167,7 +187,7 @@ export function LeftSidebar() {
               label={def.name}
               description={def.description}
               active={activePrimitiveType === def.id}
-              previewColor={def.color}
+              previewColor={panelColorValue ?? def.color}
               onClick={() =>
                 setActivePrimitiveType(
                   activePrimitiveType === def.id ? null : def.id,
@@ -176,13 +196,40 @@ export function LeftSidebar() {
             />
           ))}
         </div>
+
+        <div className="panel-color">
+          <div className="panel-color__label">
+            {editingPanelColor ? 'Selected panel finish' : 'Panel finish'}
+          </div>
+          <div className="panel-color__row">
+            <button
+              type="button"
+              className={
+                panelColorValue == null
+                  ? 'panel-color__plywood panel-color__plywood--active'
+                  : 'panel-color__plywood'
+              }
+              onClick={() => applyPanelColor(null)}
+            >
+              Plywood
+            </button>
+            <label className="panel-color__picker" title="Solid color">
+              <input
+                type="color"
+                value={pickerColor}
+                onChange={(e) => applyPanelColor(e.target.value)}
+                aria-label="Panel color"
+              />
+            </label>
+          </div>
+        </div>
       </section>
 
       <section className="sidebar__section">
         <h2 className="sidebar__section-title">Furniture</h2>
         <p className="sidebar__hint">
-          Wall benches snap into 4 ft wall bays (two on an 8 ft wall).           Corner benches are an L on one 4×4 base corner — hover the corner to
-          place (clears the steel, lines up with wall benches).
+          Stools are 18″ square and snap to free quadrants on each 4×4 plywood
+          base — clear of steel tubes, foot plates, and the gaps between boxes.
         </p>
         <div className="tool-list">
           {FURNITURE_DEFINITIONS.map((def) => (

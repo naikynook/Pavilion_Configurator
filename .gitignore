@@ -9,10 +9,10 @@ lerna-debug.log*
 
 .tools/
 node_modules
-docs/
 dist
 dist-ssr
 *.local
+asset-pipeline/temp/
 
 # Editor directories and files
 .vscode/*
